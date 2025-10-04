@@ -1,0 +1,10 @@
+---
+description: Used when starting to implement code from spec
+alwaysApply: false
+---
+
+- New specs are written in ./docs/spec/planned/<spec_name>.md
+- Start by writing the simplest possible implementation that satisfies the spec according to style.mdc.
+- Refer to writing_tests.mdc for writing the tests afterwards.
+- Edit any architecture or design decision in ./docs/architecture directory
+- After implementation is done, move the spec file to ./docs/spec/implemented/<spec_name>.md.

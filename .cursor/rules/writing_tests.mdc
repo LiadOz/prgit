@@ -1,0 +1,8 @@
+---
+alwaysApply: false
+---
+
+- Tests are written in ./tests directory.
+- Tests should use pytest features, such as fixtures, parametrization, etc.
+- Tests should be able to be written without mocking or patching, sometimes modifying the code to be testable is necessary.
+- Some tests may not be able to run without mocking, for those we will have advanced mocks.

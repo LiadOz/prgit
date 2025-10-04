@@ -1,0 +1,14 @@
+---
+description: Used when implementing or refactoring code
+alwaysApply: false
+---
+
+- Write short and concise code.
+- Use meaningful variable and function names.
+- Function names should explain what they do, needing no additional comments.
+- Use comments sparingly, only when it is impossible to explain why the code is written the way it is.
+- Use type hints for all functions and variables, the project should be strongly typed.
+- Use StrEnums for string literals, the code should have no hardcoded strings, though exceptions may apply.
+- All code must be written with testability in mind, unit tests should be able to be written without mocking or patching.
+- Use PEP-8 style for all Python code.
+- Avoid using emojis in code.

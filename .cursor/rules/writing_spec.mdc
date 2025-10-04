@@ -1,0 +1,6 @@
+---
+alwaysApply: false
+---
+
+- New specs are written in ./docs/spec/planned/<spec_name>.md.
+- Specs should be concise and to the point, avoid unnecessary detail but make sure to cover all the details.
