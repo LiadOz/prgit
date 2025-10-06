@@ -12,3 +12,4 @@ alwaysApply: false
 - All code must be written with testability in mind, unit tests should be able to be written without mocking or patching.
 - Use PEP-8 style for all Python code.
 - Avoid using emojis in code.
+- When planning out the code, make sure you try to use existing third party libraries and packages if possible.

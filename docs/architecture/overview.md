@@ -50,8 +50,9 @@ Server-side Git hooks enforce workflow:
 4. **Development**: Work locally, commit to feature branches
 5. **Push**: Branch push creates/updates corresponding Perforce shelf
 6. **Review**: Shelf reviewed and submitted in Perforce
-7. **Sync**: Server imports submitted changes to Git master
-8. **Merge**: Submitted shelf merged with `-s ours` strategy, preserving branch history while keeping Perforce content canonical
+7. **Sync**: Server imports submitted changelist to Git master with branch commits appearing in history while keeping Perforce content canonical
+
+See [Sync Engine](./sync-engine.md) for detailed synchronization flows and architecture.
 
 ## Key Design Principles
 
@@ -59,7 +60,7 @@ Server-side Git hooks enforce workflow:
 
 **Perforce as Source of Truth**: All content changes flow through Perforce submission
 
-**Branch History Preservation**: Git branch history remains connected via ours merges, maintaining clean Git graph
+**Branch History Preservation**: Git branch history remains connected and visible in the Git graph
 
 **Multi-User Consistency**: Original Git commits reused across users when syncing P4 changelists that originated from prgit
 

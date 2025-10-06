@@ -10,3 +10,18 @@
 #   universal: false
 
 -e file:.
+gitdb==4.0.12
+    # via gitpython
+gitpython==3.1.45
+    # via prgit
+iniconfig==2.1.0
+    # via pytest
+packaging==25.0
+    # via pytest
+pluggy==1.6.0
+    # via pytest
+pygments==2.19.2
+    # via pytest
+pytest==8.4.2
+smmap==5.0.2
+    # via gitdb
