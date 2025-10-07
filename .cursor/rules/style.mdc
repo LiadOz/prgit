@@ -12,4 +12,6 @@ alwaysApply: false
 - All code must be written with testability in mind, unit tests should be able to be written without mocking or patching.
 - Use PEP-8 style for all Python code.
 - Avoid using emojis in code.
-- When planning out the code, make sure you try to use existing third party libraries and packages if possible.
+- When planning out the code, make jjsure you try to use existing third party libraries and packages if possible.
+- Do not use # type: ignore comments, unless you got a clear instruction from either the user or the spec.
+- Refer to ./docs/spec/exceptions.md for the exception system design.
