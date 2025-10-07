@@ -2,5 +2,8 @@
 alwaysApply: false
 ---
 
-- New specs are written in ./docs/spec/planned/<spec_name>.md.
+- New specs are written in ./docs/spec/**/<spec_name>.md.
+- Specs location also define the location of the code to be implemented.
+- Specs must specify where the code should be implemented.
+- The spec document may reference other spec documents, but should not depend on them. Use @ref to reference other spec documents. Use @todo to mark sections that are not yet implemented.
 - Specs should be concise and to the point, avoid unnecessary detail but make sure to cover all the details.

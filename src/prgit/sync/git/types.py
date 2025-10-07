@@ -43,4 +43,3 @@ class Repository:
     commits: dict[str, Commit]
     branches: dict[str, str]
     head: str
-

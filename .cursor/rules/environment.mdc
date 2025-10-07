@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+- The project uses rye
+- The project uses the following tools for verifying the automatically generated code:
+  - Pytest
+  - MyPy
+  - Ruff
+  - Bandit
+  - Semgrep
+  - Coverage.py
+- Use rye run tox for running all the tools or each tool individually, prefer running all the tools at once after big changes, then use individual tools when you know which tool is causing the issue.

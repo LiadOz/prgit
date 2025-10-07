@@ -1,45 +1,17 @@
 import hashlib
-import threading
 from datetime import datetime
 from pathlib import Path
 
 from prgit.sync.git.abstract_engine import GitEngine
-from prgit.sync.git.types import Author, Branch, Commit, FileStatus, FileStatusType, Repository
-
-
-class VirtualGitRegistry:
-    _instance: "VirtualGitRegistry | None" = None
-    _lock: threading.Lock = threading.Lock()
-
-    def __init__(self) -> None:
-        self._repositories: dict[str, Repository] = {}
-        self._repo_lock: threading.Lock = threading.Lock()
-
-    @classmethod
-    def instance(cls) -> "VirtualGitRegistry":
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
-        return cls._instance
-
-    def register(self, identifier: str, repository: Repository) -> None:
-        with self._repo_lock:
-            self._repositories[identifier] = repository
-
-    def unregister(self, identifier: str) -> None:
-        with self._repo_lock:
-            self._repositories.pop(identifier, None)
-
-    def get(self, identifier: str) -> Repository:
-        with self._repo_lock:
-            if identifier not in self._repositories:
-                raise ValueError(f"Repository '{identifier}' not found in registry")
-            return self._repositories[identifier]
-
-    def clear(self) -> None:
-        with self._repo_lock:
-            self._repositories.clear()
+from prgit.sync.git.types import (
+    Author,
+    Branch,
+    Commit,
+    FileStatus,
+    FileStatusType,
+    Repository,
+)
+from prgit.sync.virtual_registry import VirtualRegistry
 
 
 class VirtualGitEngine(GitEngine):
@@ -60,15 +32,15 @@ class VirtualGitEngine(GitEngine):
         self._initialized = True
 
     def clone_repo(self, source: str, target_path: Path) -> None:
-        registry = VirtualGitRegistry.instance()
+        registry = VirtualRegistry[Repository].instance()
         repository = registry.get(source)
-        
+
         self._commits = dict(repository.commits)
         self._branches = dict(repository.branches)
         self._head = repository.head
         self._working_files = {}
         self._initialized = True
-        
+
         if self._head:
             self._checkout_files(self._resolve_head_commit())
 
@@ -86,24 +58,24 @@ class VirtualGitEngine(GitEngine):
             commit_hash = self._branches[branch]
         else:
             commit_hash = self._resolve_head_commit()
-        
+
         commits: list[Commit] = []
         visited: set[str] = set()
         stack: list[str] = [commit_hash]
-        
+
         while stack:
             current_hash = stack.pop()
             if current_hash in visited:
-                continue
+                continue  # pragma: no cover
             visited.add(current_hash)
-            
+
             commit = self._commits[current_hash]
             commits.append(commit)
-            
+
             for parent_hash in commit.parent_hashes:
                 if parent_hash not in visited:
                     stack.append(parent_hash)
-        
+
         return commits
 
     def get_commit(self, commit_hash: str) -> Commit:
@@ -112,7 +84,9 @@ class VirtualGitEngine(GitEngine):
         return self._commits[commit_hash]
 
     def get_branches(self) -> list[Branch]:
-        return [Branch(name=name, commit_hash=hash) for name, hash in self._branches.items()]
+        return [
+            Branch(name=name, commit_hash=hash) for name, hash in self._branches.items()
+        ]
 
     def get_current_branch(self) -> Branch | None:
         if self._head is None:
@@ -124,11 +98,11 @@ class VirtualGitEngine(GitEngine):
     def create_branch(self, name: str, from_commit: str | None = None) -> Branch:
         if name in self._branches:
             raise ValueError(f"Branch '{name}' already exists")
-        
+
         commit_hash = from_commit if from_commit else self._resolve_head_commit()
         if commit_hash not in self._commits:
             raise ValueError(f"Commit '{commit_hash}' not found")
-        
+
         self._branches[name] = commit_hash
         return Branch(name=name, commit_hash=commit_hash)
 
@@ -141,7 +115,7 @@ class VirtualGitEngine(GitEngine):
             commit_hash = branch_or_commit
         else:
             raise ValueError(f"Branch or commit '{branch_or_commit}' not found")
-        
+
         self._checkout_files(commit_hash)
 
     def delete_branch(self, name: str, force: bool = False) -> None:
@@ -154,21 +128,21 @@ class VirtualGitEngine(GitEngine):
     def get_file_status(self) -> list[FileStatus]:
         commit_hash = self._resolve_head_commit()
         commit_files = self._get_commit_files(commit_hash) if commit_hash else {}
-        
+
         statuses: list[FileStatus] = []
         all_paths = set(self._working_files.keys()) | set(commit_files.keys())
-        
+
         for path in all_paths:
             working_content = self._working_files.get(path)
             commit_content = commit_files.get(path)
-            
+
             if working_content is None and commit_content is not None:
                 statuses.append(FileStatus(path=path, status=FileStatusType.DELETED))
             elif working_content is not None and commit_content is None:
                 statuses.append(FileStatus(path=path, status=FileStatusType.UNTRACKED))
             elif working_content != commit_content:
                 statuses.append(FileStatus(path=path, status=FileStatusType.MODIFIED))
-        
+
         return statuses
 
     def stage_and_commit(
@@ -180,12 +154,14 @@ class VirtualGitEngine(GitEngine):
     ) -> Commit:
         for path, content in files.items():
             self._working_files[path] = content
-        
+
         parent_hash = self._resolve_head_commit() if self._head else None
         parent_hashes = [parent_hash] if parent_hash else []
-        
-        commit_hash = self._generate_commit_hash(files, message, author, timestamp or datetime.now(), parent_hashes)
-        
+
+        commit_hash = self._generate_commit_hash(
+            files, message, author, timestamp or datetime.now(), parent_hashes
+        )
+
         commit = Commit(
             hash=commit_hash,
             author=author,
@@ -193,10 +169,10 @@ class VirtualGitEngine(GitEngine):
             message=message,
             parent_hashes=parent_hashes,
         )
-        
+
         self._commits[commit_hash] = commit
         self._commit_files[commit_hash] = dict(self._working_files)
-        
+
         if self._head and self._head in self._branches:
             self._branches[self._head] = commit_hash
         elif self._head:
@@ -204,22 +180,22 @@ class VirtualGitEngine(GitEngine):
         else:
             self._branches["main"] = commit_hash
             self._head = "main"
-        
+
         return commit
 
     def merge(self, branch: str, message: str | None = None) -> Commit:
         if branch not in self._branches:
             raise ValueError(f"Branch '{branch}' not found")
-        
+
         current_hash = self._resolve_head_commit()
         merge_hash = self._branches[branch]
-        
+
         merge_message = message or f"Merge branch '{branch}'"
-        
+
         merge_files = self._get_commit_files(merge_hash)
         for path, content in merge_files.items():
             self._working_files[path] = content
-        
+
         author = Author(name="VirtualGit", email="virtual@git.com")
         commit_hash = self._generate_commit_hash(
             self._working_files,
@@ -228,7 +204,7 @@ class VirtualGitEngine(GitEngine):
             datetime.now(),
             [current_hash, merge_hash],
         )
-        
+
         commit = Commit(
             hash=commit_hash,
             author=author,
@@ -236,15 +212,15 @@ class VirtualGitEngine(GitEngine):
             message=merge_message,
             parent_hashes=[current_hash, merge_hash],
         )
-        
+
         self._commits[commit_hash] = commit
         self._commit_files[commit_hash] = dict(self._working_files)
-        
+
         if self._head and self._head in self._branches:
             self._branches[self._head] = commit_hash
         elif self._head:
             self._head = commit_hash
-        
+
         return commit
 
     def _resolve_head_commit(self) -> str:
@@ -260,10 +236,10 @@ class VirtualGitEngine(GitEngine):
     def _get_commit_files(self, commit_hash: str) -> dict[Path, bytes]:
         if not commit_hash or commit_hash not in self._commits:
             return {}
-        
+
         if commit_hash in self._commit_files:
             return dict(self._commit_files[commit_hash])
-        
+
         return {}
 
     def _generate_commit_hash(
@@ -279,4 +255,3 @@ class VirtualGitEngine(GitEngine):
         for path, data in sorted(files.items()):
             content += f"{path}{data.hex()}"
         return hashlib.sha256(content.encode()).hexdigest()[:40]
-

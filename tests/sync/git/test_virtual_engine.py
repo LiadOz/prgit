@@ -23,7 +23,7 @@ def clear_registry():
 def test_init_repo():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     assert engine._initialized is True
     assert len(engine._commits) == 0
     assert len(engine._branches) == 0
@@ -38,13 +38,13 @@ def test_manual_repository_construction():
         message="Initial commit",
         parent_hashes=[],
     )
-    
+
     repository = Repository(
         commits={"abc123": commit},
         branches={"main": "abc123"},
         head="main",
     )
-    
+
     assert repository.commits["abc123"].message == "Initial commit"
     assert repository.branches["main"] == "abc123"
     assert repository.head == "main"
@@ -59,19 +59,19 @@ def test_repository_cloning_with_registry():
         message="Initial commit",
         parent_hashes=[],
     )
-    
+
     repository = Repository(
         commits={"abc123": commit},
         branches={"main": "abc123"},
         head="main",
     )
-    
+
     registry = VirtualGitRegistry.instance()
     registry.register("virtual://test-repo", repository)
-    
+
     engine = VirtualGitEngine()
     engine.clone_repo("virtual://test-repo", Path("/fake/clone"))
-    
+
     assert len(engine._commits) == 1
     assert "abc123" in engine._commits
     assert engine._branches["main"] == "abc123"
@@ -81,13 +81,13 @@ def test_repository_cloning_with_registry():
 def test_stage_and_commit():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
     files = {Path("test.txt"): b"Hello, World!"}
     timestamp = datetime(2025, 1, 1, 12, 0, 0)
-    
+
     commit = engine.stage_and_commit(files, "Initial commit", author, timestamp)
-    
+
     assert commit.message == "Initial commit"
     assert commit.author == author
     assert commit.timestamp == timestamp
@@ -99,25 +99,25 @@ def test_stage_and_commit():
 def test_get_commits():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit1 = engine.stage_and_commit(
         {Path("file1.txt"): b"Content 1"},
         "First commit",
         author,
         datetime(2025, 1, 1, 12, 0, 0),
     )
-    
+
     commit2 = engine.stage_and_commit(
         {Path("file2.txt"): b"Content 2"},
         "Second commit",
         author,
         datetime(2025, 1, 1, 13, 0, 0),
     )
-    
+
     commits = engine.get_commits()
-    
+
     assert len(commits) == 2
     assert commits[0].hash == commit2.hash
     assert commits[1].hash == commit1.hash
@@ -126,17 +126,17 @@ def test_get_commits():
 def test_get_commit():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit = engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Test commit",
         author,
     )
-    
+
     retrieved = engine.get_commit(commit.hash)
-    
+
     assert retrieved.hash == commit.hash
     assert retrieved.message == "Test commit"
 
@@ -144,17 +144,17 @@ def test_get_commit():
 def test_create_branch():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit = engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     branch = engine.create_branch("feature")
-    
+
     assert branch.name == "feature"
     assert branch.commit_hash == commit.hash
     assert "feature" in engine._branches
@@ -163,20 +163,20 @@ def test_create_branch():
 def test_get_branches():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     engine.create_branch("feature")
     engine.create_branch("develop")
-    
+
     branches = engine.get_branches()
-    
+
     assert len(branches) == 3
     branch_names = {b.name for b in branches}
     assert branch_names == {"main", "feature", "develop"}
@@ -185,18 +185,18 @@ def test_get_branches():
 def test_checkout_branch():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     engine.create_branch("feature")
     engine.checkout("feature")
-    
+
     current = engine.get_current_branch()
     assert current is not None
     assert current.name == "feature"
@@ -205,18 +205,18 @@ def test_checkout_branch():
 def test_delete_branch():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     engine.create_branch("feature")
     engine.delete_branch("feature")
-    
+
     branches = engine.get_branches()
     branch_names = {b.name for b in branches}
     assert "feature" not in branch_names
@@ -225,20 +225,20 @@ def test_delete_branch():
 def test_get_file_status():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     engine.stage_and_commit(
         {Path("committed.txt"): b"Committed content"},
         "Initial commit",
         author,
     )
-    
+
     engine._working_files[Path("new.txt")] = b"New content"
     engine._working_files[Path("committed.txt")] = b"Modified content"
-    
+
     statuses = engine.get_file_status()
-    
+
     status_dict = {s.path: s.status for s in statuses}
     assert status_dict[Path("new.txt")] == FileStatusType.UNTRACKED
     assert status_dict[Path("committed.txt")] == FileStatusType.MODIFIED
@@ -247,28 +247,28 @@ def test_get_file_status():
 def test_merge():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit1 = engine.stage_and_commit(
         {Path("base.txt"): b"Base content"},
         "Initial commit",
         author,
     )
-    
+
     engine.create_branch("feature")
     engine.checkout("feature")
-    
+
     commit2 = engine.stage_and_commit(
         {Path("feature.txt"): b"Feature content"},
         "Feature commit",
         author,
     )
-    
+
     engine.checkout("main")
-    
+
     merge_commit = engine.merge("feature", "Merge feature branch")
-    
+
     assert merge_commit.message == "Merge feature branch"
     assert len(merge_commit.parent_hashes) == 2
     assert commit1.hash in merge_commit.parent_hashes
@@ -278,19 +278,19 @@ def test_merge():
 def test_export_repository():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit = engine.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     engine.create_branch("feature")
-    
+
     repository = engine.export_repository()
-    
+
     assert len(repository.commits) == 1
     assert commit.hash in repository.commits
     assert len(repository.branches) == 2
@@ -301,24 +301,24 @@ def test_export_repository():
 def test_virtual_engine_state_consistency():
     engine = VirtualGitEngine()
     engine.init_repo(Path("/fake/repo"))
-    
+
     author = Author("Test User", "test@example.com")
-    
+
     commit1 = engine.stage_and_commit(
         {Path("file1.txt"): b"Content 1"},
         "First commit",
         author,
     )
-    
+
     engine.create_branch("branch1")
     engine.checkout("branch1")
-    
+
     commit2 = engine.stage_and_commit(
         {Path("file2.txt"): b"Content 2"},
         "Second commit",
         author,
     )
-    
+
     assert engine._branches["main"] == commit1.hash
     assert engine._branches["branch1"] == commit2.hash
     assert engine._head == "branch1"
@@ -328,25 +328,25 @@ def test_virtual_engine_state_consistency():
 def test_cloned_repository_identical():
     engine1 = VirtualGitEngine()
     engine1.init_repo(Path("/fake/repo1"))
-    
+
     author = Author("Test User", "test@example.com")
-    
-    commit = engine1.stage_and_commit(
+
+    engine1.stage_and_commit(
         {Path("test.txt"): b"Content"},
         "Initial commit",
         author,
     )
-    
+
     engine1.create_branch("feature")
-    
+
     repository = engine1.export_repository()
-    
+
     registry = VirtualGitRegistry.instance()
     registry.register("virtual://clone-source", repository)
-    
+
     engine2 = VirtualGitEngine()
     engine2.clone_repo("virtual://clone-source", Path("/fake/repo2"))
-    
+
     assert engine1._commits.keys() == engine2._commits.keys()
     assert engine1._branches == engine2._branches
     assert engine1._head == engine2._head
@@ -354,7 +354,7 @@ def test_cloned_repository_identical():
 
 def test_registry_operations():
     registry = VirtualGitRegistry.instance()
-    
+
     author = Author("Test User", "test@example.com")
     commit = Commit(
         hash="abc123",
@@ -363,23 +363,366 @@ def test_registry_operations():
         message="Test commit",
         parent_hashes=[],
     )
-    
+
     repository = Repository(
         commits={"abc123": commit},
         branches={"main": "abc123"},
         head="main",
     )
-    
+
     registry.register("virtual://test", repository)
-    
+
     retrieved = registry.get("virtual://test")
     assert retrieved.commits["abc123"].message == "Test commit"
-    
+
     registry.unregister("virtual://test")
-    
+
     with pytest.raises(ValueError):
         registry.get("virtual://test")
-    
-    registry.clear()
-    assert len(registry._repositories) == 0
 
+    registry.clear()
+    assert len(registry._data) == 0
+
+
+def test_get_commits_branch_not_found():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    with pytest.raises(ValueError, match="Branch 'nonexistent' not found"):
+        engine.get_commits("nonexistent")
+
+
+def test_get_commit_not_found():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    with pytest.raises(ValueError, match="Commit 'abc123' not found"):
+        engine.get_commit("abc123")
+
+
+def test_get_current_branch_with_no_head():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    result = engine.get_current_branch()
+    assert result is None
+
+
+def test_get_current_branch_detached_head():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    commit = engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    engine.checkout(commit.hash)
+
+    result = engine.get_current_branch()
+    assert result is None
+
+
+def test_create_branch_already_exists():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    engine.create_branch("feature")
+
+    with pytest.raises(ValueError, match="Branch 'feature' already exists"):
+        engine.create_branch("feature")
+
+
+def test_create_branch_from_invalid_commit():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    with pytest.raises(ValueError, match="Commit 'invalid' not found"):
+        engine.create_branch("feature", "invalid")
+
+
+def test_checkout_commit_hash():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    commit = engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    engine.checkout(commit.hash)
+
+    assert engine._head == commit.hash
+
+
+def test_checkout_invalid_branch_or_commit():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    with pytest.raises(ValueError, match="Branch or commit 'invalid' not found"):
+        engine.checkout("invalid")
+
+
+def test_delete_branch_not_found():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    with pytest.raises(ValueError, match="Branch 'nonexistent' not found"):
+        engine.delete_branch("nonexistent")
+
+
+def test_delete_branch_current_branch():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    with pytest.raises(ValueError, match="Cannot delete checked out branch 'main'"):
+        engine.delete_branch("main")
+
+
+def test_file_status_deleted():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("deleted.txt"): b"Content to be deleted"},
+        "Initial commit",
+        author,
+    )
+
+    del engine._working_files[Path("deleted.txt")]
+
+    statuses = engine.get_file_status()
+    status_dict = {s.path: s.status for s in statuses}
+
+    assert status_dict[Path("deleted.txt")] == FileStatusType.DELETED
+
+
+def test_merge_branch_not_found():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    with pytest.raises(ValueError, match="Branch 'nonexistent' not found"):
+        engine.merge("nonexistent")
+
+
+def test_stage_and_commit_on_detached_head():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    commit1 = engine.stage_and_commit(
+        {Path("test.txt"): b"Content 1"},
+        "First commit",
+        author,
+    )
+
+    engine.checkout(commit1.hash)
+
+    commit2 = engine.stage_and_commit(
+        {Path("test2.txt"): b"Content 2"},
+        "Second commit",
+        author,
+    )
+
+    assert engine._head == commit2.hash
+
+
+def test_get_commit_files_empty():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    result = engine._get_commit_files("nonexistent")
+    assert result == {}
+
+
+def test_resolve_head_commit_no_head():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    engine._head = None
+
+    with pytest.raises(ValueError, match="HEAD is not set"):
+        engine._resolve_head_commit()
+
+
+def test_resolve_head_commit_detached():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    commit = engine.stage_and_commit(
+        {Path("test.txt"): b"Content"},
+        "Initial commit",
+        author,
+    )
+
+    engine.checkout(commit.hash)
+
+    result = engine._resolve_head_commit()
+    assert result == commit.hash
+
+
+def test_get_commits_specific_branch():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+    engine.stage_and_commit(
+        {Path("test.txt"): b"Content 1"},
+        "First commit",
+        author,
+    )
+
+    engine.create_branch("feature")
+    engine.checkout("feature")
+
+    commit2 = engine.stage_and_commit(
+        {Path("test.txt"): b"Content 2"},
+        "Second commit",
+        author,
+    )
+
+    commits = engine.get_commits("feature")
+    assert len(commits) == 2
+    assert commits[0].hash == commit2.hash
+
+
+def test_get_commits_with_merge_commit():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+
+    engine.stage_and_commit(
+        {Path("base.txt"): b"Base"},
+        "Base commit",
+        author,
+    )
+
+    engine.create_branch("branch1")
+    engine.checkout("branch1")
+    engine.stage_and_commit(
+        {Path("branch1.txt"): b"Branch1"},
+        "Branch1 commit",
+        author,
+    )
+
+    engine.checkout("main")
+    engine.create_branch("branch2")
+    engine.checkout("branch2")
+    engine.stage_and_commit(
+        {Path("branch2.txt"): b"Branch2"},
+        "Branch2 commit",
+        author,
+    )
+
+    engine.checkout("main")
+    engine.merge("branch1")
+    engine.merge("branch2")
+
+    commits = engine.get_commits()
+    assert len(commits) == 5
+
+
+def test_merge_on_detached_head():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+
+    commit1 = engine.stage_and_commit(
+        {Path("base.txt"): b"Base"},
+        "Base commit",
+        author,
+    )
+
+    engine.create_branch("feature")
+    engine.checkout("feature")
+    engine.stage_and_commit(
+        {Path("feature.txt"): b"Feature"},
+        "Feature commit",
+        author,
+    )
+
+    engine.checkout(commit1.hash)
+
+    merge_commit = engine.merge("feature")
+
+    assert engine._head == merge_commit.hash
+
+
+def test_get_commits_with_diamond_dag():
+    engine = VirtualGitEngine()
+    engine.init_repo(Path("/fake/repo"))
+
+    author = Author("Test User", "test@example.com")
+
+    engine.stage_and_commit(
+        {Path("base.txt"): b"Base"},
+        "Base commit",
+        author,
+    )
+
+    engine.create_branch("left")
+    engine.create_branch("right")
+
+    engine.checkout("left")
+    engine.stage_and_commit(
+        {Path("left.txt"): b"Left"},
+        "Left commit",
+        author,
+    )
+
+    engine.checkout("right")
+    engine.stage_and_commit(
+        {Path("right.txt"): b"Right"},
+        "Right commit",
+        author,
+    )
+
+    engine.checkout("main")
+    engine.merge("left")
+    engine.merge("right")
+
+    commits = engine.get_commits()
+    assert len(commits) >= 5

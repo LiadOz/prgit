@@ -63,4 +63,3 @@ class GitEngine(ABC):
     @abstractmethod
     def merge(self, branch: str, message: str | None = None) -> Commit:
         pass
-

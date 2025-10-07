@@ -8,7 +8,10 @@ from prgit.sync.git.types import (
     FileStatusType,
     Repository,
 )
-from prgit.sync.git.virtual_engine import VirtualGitEngine, VirtualGitRegistry
+from prgit.sync.git.virtual_engine import VirtualGitEngine
+from prgit.sync.virtual_registry import VirtualRegistry
+
+VirtualGitRegistry = VirtualRegistry[Repository]
 
 __all__ = [
     "GitEngine",
@@ -22,4 +25,3 @@ __all__ = [
     "FileStatusType",
     "Repository",
 ]
-

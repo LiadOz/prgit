@@ -88,12 +88,20 @@ Internal state structure:
 
 ### VirtualGitRegistry
 
-Singleton registry that holds `Repository` objects for testing. Acts as the central repository host for virtual engines.
+Type alias to generic `VirtualRegistry[Repository]` for testing. Acts as the central repository host for virtual engines.
 
-Location: `src/prgit/sync/git/virtual_engine.py`
+Location: `src/prgit/sync/git/__init__.py`
+
+```python
+from prgit.sync.virtual_registry import VirtualRegistry
+from prgit.sync.git.types import Repository
+
+VirtualGitRegistry = VirtualRegistry[Repository]
+```
 
 #### Methods
 
+- `instance() -> VirtualRegistry[Repository]`: Get singleton instance
 - `register(identifier: str, repository: Repository) -> None`: Register a Repository with an identifier
 - `unregister(identifier: str) -> None`: Remove a repository from the registry
 - `get(identifier: str) -> Repository`: Retrieve a registered Repository by identifier
@@ -101,9 +109,9 @@ Location: `src/prgit/sync/git/virtual_engine.py`
 
 #### Usage Pattern
 
-Singleton instance accessed via class method or module-level instance:
-
 ```python
+from prgit.sync.git import VirtualGitRegistry
+
 registry = VirtualGitRegistry.instance()
 registry.register("virtual://my-repo", repository)
 ```
@@ -114,10 +122,10 @@ Provides a centralized registry for `Repository` objects that can be cloned. Whe
 
 #### Implementation Notes
 
-- Singleton pattern ensures single registry instance
+- Uses generic `VirtualRegistry[T]` from `src/prgit/sync/virtual_registry.py`
+- See `docs/spec/sync/virtual_registry.md` for implementation details
+- Singleton pattern ensures single registry instance per type
 - Thread-safe for concurrent test execution
-- Lazy initialization on first access
-- Stores references to Repository objects
 - Used exclusively with `VirtualGitEngine` for testing
 
 ### Dataclasses

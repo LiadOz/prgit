@@ -4,7 +4,14 @@ from pathlib import Path
 import git
 
 from prgit.sync.git.abstract_engine import GitEngine
-from prgit.sync.git.types import Author, Branch, Commit, FileStatus, FileStatusType, Repository
+from prgit.sync.git.types import (
+    Author,
+    Branch,
+    Commit,
+    FileStatus,
+    FileStatusType,
+    Repository,
+)
 
 
 class RealGitEngine(GitEngine):
@@ -59,12 +66,18 @@ class RealGitEngine(GitEngine):
             raise ValueError(f"Commit '{commit_hash}' not found: {e}")
 
     def get_branches(self) -> list[Branch]:
-        return [Branch(name=ref.name, commit_hash=ref.commit.hexsha) for ref in self.repo.heads]
+        return [
+            Branch(name=ref.name, commit_hash=ref.commit.hexsha)
+            for ref in self.repo.heads
+        ]
 
     def get_current_branch(self) -> Branch | None:
         if self.repo.head.is_detached:
             return None
-        return Branch(name=self.repo.active_branch.name, commit_hash=self.repo.active_branch.commit.hexsha)
+        return Branch(
+            name=self.repo.active_branch.name,
+            commit_hash=self.repo.active_branch.commit.hexsha,
+        )
 
     def create_branch(self, name: str, from_commit: str | None = None) -> Branch:
         try:
@@ -91,8 +104,10 @@ class RealGitEngine(GitEngine):
 
     def get_file_status(self) -> list[FileStatus]:
         statuses: list[FileStatus] = []
-        
+
         for item in self.repo.index.diff(None):
+            if item.a_path is None:
+                continue
             path = Path(item.a_path)
             if item.deleted_file:
                 statuses.append(FileStatus(path=path, status=FileStatusType.DELETED))
@@ -100,15 +115,19 @@ class RealGitEngine(GitEngine):
                 statuses.append(FileStatus(path=path, status=FileStatusType.ADDED))
             else:
                 statuses.append(FileStatus(path=path, status=FileStatusType.MODIFIED))
-        
+
         for item in self.repo.index.diff("HEAD"):
+            if item.a_path is None:
+                continue
             path = Path(item.a_path)
             if item.new_file:
                 statuses.append(FileStatus(path=path, status=FileStatusType.ADDED))
-        
+
         for path_str in self.repo.untracked_files:
-            statuses.append(FileStatus(path=Path(path_str), status=FileStatusType.UNTRACKED))
-        
+            statuses.append(
+                FileStatus(path=Path(path_str), status=FileStatusType.UNTRACKED)
+            )
+
         return statuses
 
     def stage_and_commit(
@@ -123,45 +142,60 @@ class RealGitEngine(GitEngine):
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_bytes(content)
             self.repo.index.add([str(path)])
-        
+
         author_str = f"{author.name} <{author.email}>"
-        
+
         if timestamp:
-            env = {"GIT_AUTHOR_DATE": timestamp.isoformat(), "GIT_COMMITTER_DATE": timestamp.isoformat()}
-            commit_obj = self.repo.index.commit(message, author=git.Actor._from_string(author_str), committer=git.Actor._from_string(author_str), author_date=timestamp.isoformat(), commit_date=timestamp.isoformat())
+            commit_obj = self.repo.index.commit(
+                message,
+                author=git.Actor._from_string(author_str),
+                committer=git.Actor._from_string(author_str),
+                author_date=timestamp.isoformat(),
+                commit_date=timestamp.isoformat(),
+            )
         else:
-            commit_obj = self.repo.index.commit(message, author=git.Actor._from_string(author_str))
-        
+            commit_obj = self.repo.index.commit(
+                message, author=git.Actor._from_string(author_str)
+            )
+
         return self._convert_commit(commit_obj)
 
     def merge(self, branch: str, message: str | None = None) -> Commit:
         try:
-            base = self.repo.merge_base(self.repo.head.commit, self.repo.heads[branch].commit)
+            base = self.repo.merge_base(
+                self.repo.head.commit, self.repo.heads[branch].commit
+            )
             if not base:
                 raise ValueError(f"No merge base found for branch '{branch}'")
-            
+
             self.repo.index.merge_tree(self.repo.head.commit, base_commit=base[0])
-            
+
             merge_msg = message or f"Merge branch '{branch}'"
             commit_obj = self.repo.index.commit(
                 merge_msg,
-                parent_commits=(self.repo.head.commit, self.repo.heads[branch].commit),
+                parent_commits=[self.repo.head.commit, self.repo.heads[branch].commit],
             )
-            
+
             return self._convert_commit(commit_obj)
         except (git.exc.GitCommandError, KeyError) as e:
             raise ValueError(f"Failed to merge branch '{branch}': {e}")
 
     def _convert_commit(self, commit_obj: git.Commit) -> Commit:
-        author = Author(name=commit_obj.author.name, email=commit_obj.author.email)
+        author = Author(
+            name=commit_obj.author.name or "",
+            email=commit_obj.author.email or "",
+        )
         timestamp = datetime.fromtimestamp(commit_obj.authored_date, tz=timezone.utc)
         parent_hashes = [p.hexsha for p in commit_obj.parents]
-        
+
+        message = commit_obj.message
+        if isinstance(message, bytes):
+            message = message.decode("utf-8")
+
         return Commit(
             hash=commit_obj.hexsha,
             author=author,
             timestamp=timestamp,
-            message=commit_obj.message.strip(),
+            message=message.strip(),
             parent_hashes=parent_hashes,
         )
-

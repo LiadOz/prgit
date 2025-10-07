@@ -7,6 +7,7 @@ authors = [
 ]
 dependencies = [
     "gitpython>=3.1.45",
+    "p4python>=2025.1.2767466",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
@@ -19,6 +20,12 @@ build-backend = "hatchling.build"
 managed = true
 dev-dependencies = [
     "pytest>=8.4.2",
+    "ruff>=0.13.3",
+    "bandit>=1.8.6",
+    "mypy>=1.18.2",
+    "semgrep>=1.139.0",
+    "coverage>=7.10.7",
+    "tox>=4.30.3",
 ]
 
 [tool.hatch.metadata]
@@ -26,3 +33,67 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/prgit"]
+
+[tool.tox]
+env_list = ["lint", "format", "types", "test", "coverage", "security"]
+skip_missing_interpreters = true
+
+[tool.tox.env.lint]
+description = "Lint checks using Ruff"
+deps = ["ruff"]
+commands = [["ruff", "check", "src/", "tests/"]]
+
+[tool.tox.env.format]
+description = "Format checks using Ruff"
+deps = ["ruff"]
+commands = [["ruff", "format", "--check", "src/", "tests/"]]
+
+[tool.tox.env.types]
+description = "Type checking with mypy"
+deps = ["mypy"]
+commands = [["mypy", "src/"]]
+
+[tool.tox.env.test]
+description = "Run pytest"
+deps = ["pytest"]
+commands = [["pytest"]]
+
+[tool.tox.env.coverage]
+description = "Measure code coverage"
+deps = ["pytest", "coverage"]
+commands = [
+    ["coverage", "run", "-m", "pytest"],
+    ["coverage", "report", "--fail-under=100"]
+]
+
+[tool.tox.env.security]
+description = "Security and quality scans"
+deps = ["bandit", "semgrep"]
+commands = [
+    ["bandit", "-r", "src/"],
+    ["semgrep", "--config", "auto", "src/"]
+]
+
+[tool.coverage.run]
+source = ["prgit"]
+relative_files = true
+omit = [
+    "*/prgit/__init__.py",
+    "*/prgit/sync/git/real_engine.py",
+    "*/prgit/sync/perforce/real_engine.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "pass",
+]
+
+[tool.ruff.lint]
+select = ["PGH003"]

@@ -14,5 +14,7 @@ gitdb==4.0.12
     # via gitpython
 gitpython==3.1.45
     # via prgit
+p4python==2025.1.2767466
+    # via prgit
 smmap==5.0.2
     # via gitdb
