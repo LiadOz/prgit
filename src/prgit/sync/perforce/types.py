@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
 
 class ChangelistStatus(StrEnum):
@@ -41,3 +42,9 @@ class Changelist:
 class ShelvedChange:
     changelist: Changelist
     files: dict[str, bytes]
+
+
+@dataclass(frozen=True)
+class Client:
+    changelists: dict[int, Changelist]
+    file_revisions: dict[str, dict[int, bytes]]

@@ -3,15 +3,15 @@ from prgit.sync.perforce.real_engine import RealPerforceEngine
 from prgit.sync.perforce.types import (
     Changelist,
     ChangelistStatus,
+    Client,
     FileAction,
     FileActionType,
     ShelvedChange,
 )
-from prgit.sync.perforce.virtual_engine import VirtualPerforceEngine
-from prgit.sync.virtual_registry import VirtualRegistry
-
-PerforceState = tuple[dict[int, Changelist], dict[str, dict[int, bytes]]]
-VirtualPerforceRegistry = VirtualRegistry[PerforceState]
+from prgit.sync.perforce.virtual_engine import (
+    VirtualPerforceEngine,
+    VirtualPerforceRegistry,
+)
 
 __all__ = [
     "PerforceEngine",
@@ -23,4 +23,5 @@ __all__ = [
     "FileAction",
     "FileActionType",
     "ShelvedChange",
+    "Client",
 ]

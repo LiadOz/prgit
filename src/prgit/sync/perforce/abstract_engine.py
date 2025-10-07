@@ -1,18 +1,26 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
-from prgit.sync.perforce.types import Changelist, ChangelistStatus, ShelvedChange
+from prgit.sync.perforce.types import (
+    Changelist,
+    ChangelistStatus,
+    Client,
+    ShelvedChange,
+)
 
 
 class PerforceEngine(ABC):
+    @abstractmethod
+    def export_client(self) -> Client:
+        pass
+
     @abstractmethod
     def get_changelist(self, number: int) -> Changelist:
         pass
 
     @abstractmethod
     def get_changelists(
-        self,
-        status: ChangelistStatus | None = None,
-        max_results: int | None = None,
+        self, status: ChangelistStatus | None = None, max_results: int | None = None
     ) -> list[Changelist]:
         pass
 
