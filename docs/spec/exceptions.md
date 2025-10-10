@@ -123,24 +123,24 @@ This design ensures:
 
 ## Subclassing
 
+Subclasses make it easy to display common exceptions with additional context. For example, a division error could be displayed as:
 ```python
 class DivisionError(PrgitError):
-    pass
+    def __init__(self, numerator: int, denominator: int, **kwargs: Any) -> None:
+        message = f"Division by zero: {numerator} / {denominator}"
+        super().__init__(message, numerator=numerator, denominator=denominator, **kwargs)
 
 
-raise DivisionError("Division by zero", numerator=10, denominator=0)
+raise DivisionError(numerator=10, denominator=0)
 ```
 
-## Testing Strategy
+A more complex example would be a version control error:
+```python
+class VersionControlError(PrgitError):
+    def __init__(self, message: str, repository: Repository, **kwargs: Any) -> None:
+        message = f"{message}: current head={repository.head} #commits={len(repository.commits)}"
+        super().__init__(message, repository=repository, **kwargs)
 
-Tests in `tests/test_exceptions.py`:
-
-- Test PrgitError with message only
-- Test PrgitError with message and kwargs
-- Test get_context_info() returns formatted string
-- Test get_context_info() with empty context returns empty string
-- Test get_context() with create_context_key_for_testing() returns kwargs dict
-- Test get_context() without key raises TypeError
-- Test create_context_key_for_testing() returns usable key
-- Test subclass inherits behavior
-- Test exception chaining with `raise ... from e`
+raise VersionControlError(message="Failed to fetch repository", repository=Repository(commits={}, branches={}, head=""))
+raise VersionControlError(message="Failed to push changes", repository=Repository(commits={}, branches={}, head=""))
+```

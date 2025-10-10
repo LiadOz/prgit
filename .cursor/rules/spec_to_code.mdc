@@ -9,3 +9,4 @@ alwaysApply: false
 - Start by writing the simplest possible implementation that satisfies the spec according to style.mdc.
 - Refer to writing_tests.mdc for writing the tests afterwards.
 - Edit any architecture or design decision in ./docs/architecture directory
+- Each spec contains the interface of the code to be implemented, including types and parameters, do not add any additional public methods or attributes.

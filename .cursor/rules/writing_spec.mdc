@@ -7,4 +7,7 @@ alwaysApply: false
 - Specs must specify where the code should be implemented.
 - The spec document may reference other spec documents, but should not depend on them. Use @ref to reference other spec documents. Use @todo to mark sections that are not yet implemented.
 - Specs should be concise and to the point, avoid unnecessary detail but make sure to cover all the details.
-- Spec should include section for exception, see ./docs/spec/exceptions.md for the exception system design.
+- Spec should include section for exception, see ./docs/spec/exceptions.md for the exception system design. You should always use subclasses of PrgitError, favor creating new subclasses for common issues.
+- Spec should show the interface of the code to be implemented, including types and parameters.
+- Spec should not contain a testing strategy section.
+- Spec should contain a usage example section.
