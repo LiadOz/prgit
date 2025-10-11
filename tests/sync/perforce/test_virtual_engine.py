@@ -362,3 +362,25 @@ def test_depot_path_without_wildcard():
 
     engine.create_changelist("Test")
     assert len(engine.get_changelists()) == 1
+
+
+def test_get_user_creates_new_user():
+    mappings = [("//depot/project/...", Path("/workspace/project"))]
+    engine = VirtualPerforceEngine(mappings)
+
+    user = engine.get_user("johndoe")
+
+    assert user.username == "johndoe"
+    assert user.email == "johndoe@example.com"
+    assert user.full_name == "johndoe"
+
+
+def test_get_user_returns_existing_user():
+    mappings = [("//depot/project/...", Path("/workspace/project"))]
+    engine = VirtualPerforceEngine(mappings)
+
+    user1 = engine.get_user("janedoe")
+    user2 = engine.get_user("janedoe")
+
+    assert user1 is user2
+    assert user1.username == "janedoe"

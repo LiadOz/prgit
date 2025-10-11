@@ -11,14 +11,15 @@ from prgit.sync.perforce.types import (
     FileAction,
     FileActionType,
     ShelvedChange,
+    User,
 )
 
 
 class RealPerforceEngine(PerforceEngine):
     def __init__(self, client_mappings: list[tuple[str, Path]]) -> None:
+        super().__init__(client_mappings)
         self._p4 = P4()
         self._P4Exception = P4Exception
-        self._mappings = client_mappings
         self._setup_client()
 
     def _setup_client(self) -> None:
@@ -147,6 +148,20 @@ class RealPerforceEngine(PerforceEngine):
             return content
         except self._P4Exception as e:
             raise ValueError(f"Failed to get file content: {e}") from e
+
+    def get_user(self, username: str) -> User:
+        try:
+            users = self._p4.run_user("-o", username)
+            if not users:
+                raise ValueError(f"User {username} not found")
+            user_data = users[0]
+            return User(
+                username=username,
+                email=user_data.get("Email", f"{username}@example.com"),
+                full_name=user_data.get("FullName", username),
+            )
+        except self._P4Exception as e:
+            raise ValueError(f"Failed to get user information: {e}") from e
 
     def create_changelist(self, description: str) -> Changelist:
         try:

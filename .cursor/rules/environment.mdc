@@ -4,3 +4,4 @@ alwaysApply: true
 
 - The project uses rye
 - Use rye run tox for running all the tools or each tool individually, prefer running all the tools at once after big changes, then use individual tools when you know which tool is causing the issue, you can use the following tox environments for it - lint, format, types, test, coverage, security.
+- When running code, only a subset of the python files are writable, this is because we require specs to be written before any code is written, you may encounter a point in which the existing spec does not allow you to implement the code, in that case, you may run the command `request_spec_change file_1 file_2 ... 'your request'` to request a spec change which another agent will modify the spec, then modify the code accordingly. The script will give you a file path, you can then run `resotre_spec_change output_file_path` to get the updated files.

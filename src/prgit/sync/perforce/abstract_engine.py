@@ -6,10 +6,14 @@ from prgit.sync.perforce.types import (
     ChangelistStatus,
     Client,
     ShelvedChange,
+    User,
 )
 
 
 class PerforceEngine(ABC):
+    def __init__(self, client_mappings: list[tuple[str, Path]]) -> None:
+        self._mappings = client_mappings
+
     @abstractmethod
     def export_client(self) -> Client:
         pass
@@ -29,6 +33,10 @@ class PerforceEngine(ABC):
         pass
 
     @abstractmethod
+    def get_user(self, username: str) -> User:
+        pass
+
+    @abstractmethod
     def create_changelist(self, description: str) -> Changelist:
         pass
 
@@ -43,3 +51,10 @@ class PerforceEngine(ABC):
         self, changelist_number: int, files: dict[str, bytes]
     ) -> ShelvedChange:
         pass
+
+    def is_path_in_client_view(self, depot_path: str) -> bool:
+        for depot_pattern, _ in self._mappings:
+            depot_root = depot_pattern.rstrip("/...").rstrip("/")
+            if depot_path.startswith(depot_root):
+                return True
+        return False

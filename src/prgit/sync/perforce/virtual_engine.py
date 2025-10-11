@@ -10,6 +10,7 @@ from prgit.sync.perforce.types import (
     FileAction,
     FileActionType,
     ShelvedChange,
+    User,
 )
 from prgit.sync.virtual_registry import VirtualRegistry
 
@@ -18,14 +19,16 @@ VirtualPerforceRegistry = VirtualRegistry[Client]
 
 class VirtualPerforceEngine(PerforceEngine):
     def __init__(self, client_mappings: list[tuple[str, Path]]) -> None:
-        self._mappings = client_mappings
+        super().__init__(client_mappings)
         self._changelists: dict[int, Changelist] = {}
         self._shelved_files: dict[int, dict[str, bytes]] = {}
         self._file_revisions: dict[str, dict[int, bytes]] = {}
+        self._users: dict[str, User] = {}
         self._next_changelist_number = 1
         self._lock = Lock()
 
         self._load_from_registry()
+        self._setup_default_users()
 
     def _load_from_registry(self) -> None:
         if not self._mappings:
@@ -53,6 +56,15 @@ class VirtualPerforceEngine(PerforceEngine):
         if depot_path.endswith("/"):
             return depot_path[:-1]
         return depot_path
+
+    def _setup_default_users(self) -> None:
+        for changelist in self._changelists.values():
+            if changelist.user not in self._users:
+                self._users[changelist.user] = User(
+                    username=changelist.user,
+                    email=f"{changelist.user}@example.com",
+                    full_name=changelist.user,
+                )
 
     def export_client(self) -> Client:
         with self._lock:
@@ -93,6 +105,18 @@ class VirtualPerforceEngine(PerforceEngine):
             if revision not in self._file_revisions[depot_path]:
                 raise ValueError(f"Revision {revision} of {depot_path} not found")
             return self._file_revisions[depot_path][revision]
+
+    def get_user(self, username: str) -> User:
+        with self._lock:
+            if username not in self._users:
+                user = User(
+                    username=username,
+                    email=f"{username}@example.com",
+                    full_name=username,
+                )
+                self._users[username] = user
+                return user
+            return self._users[username]
 
     def create_changelist(self, description: str) -> Changelist:
         with self._lock:

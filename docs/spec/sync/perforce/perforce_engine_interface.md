@@ -20,15 +20,31 @@ Abstract interface defining all Perforce operations. Implementations must provid
 
 Location: `src/prgit/sync/perforce/abstract_engine.py`
 
-#### Methods
+#### Constructor
+
+```python
+PerforceEngine(client_mappings: list[tuple[str, Path]])
+```
+
+**Parameters:**
+- `client_mappings: list[tuple[str, Path]]` - List of depot path patterns to local path mappings
+
+The base class constructor stores the client mappings in `self._mappings` for use by subclasses and the `is_path_in_client_view()` method.
+
+#### Abstract Methods
 
 - `export_client() -> Client`: Export current client state as a Client object
 - `get_changelist(number: int) -> Changelist`: Get changelist details by number
 - `get_changelists(status: ChangelistStatus | None = None, max_results: int | None = None) -> list[Changelist]`: Query changelists with filters
 - `get_changelist_file_content(depot_path: str, revision: int) -> bytes`: Get file content at specific revision
+- `get_user(username: str) -> User`: Get user information including email and full name
 - `create_changelist(description: str) -> Changelist`: Create new pending changelist
 - `update_changelist_description(number: int, description: str) -> Changelist`: Update changelist description
 - `shelve_files(changelist_number: int, files: dict[str, bytes]) -> ShelvedChange`: Shelve files to changelist
+
+#### Concrete Methods
+
+- `is_path_in_client_view(depot_path: str) -> bool`: Check if depot path matches any client mapping. Implemented in base class to provide consistent behavior across all implementations. Checks if the depot path starts with any depot root from `self._mappings` (strips "/..." suffix for comparison).
 
 ### RealPerforceEngine
 
@@ -48,8 +64,9 @@ RealPerforceEngine(client_mappings: list[tuple[str, Path]])
 - Converts P4Python objects to our dataclasses
 - Raises ValueError on P4Exception errors
 - Handles file encoding/decoding
-- Constructor creates a P4 client with the provided mappings (depot paths to local paths)
+- Constructor calls `super().__init__(client_mappings)` to initialize the base class, then creates a P4 client with the provided mappings (depot paths to local paths)
 - `export_client()` queries all changelists and file revisions relevant to the client mappings and creates a `Client` object
+- `is_path_in_client_view()` is inherited from the base class
 
 ### VirtualPerforceEngine
 
@@ -70,16 +87,20 @@ VirtualPerforceEngine(client_mappings: list[tuple[str, Path]])
 - Simulates Perforce behavior for testing
 - Generates sequential changelist numbers
 - Thread-safe operations
+- Constructor calls `super().__init__(client_mappings)` to initialize the base class
 - Queries `VirtualPerforceRegistry` singleton using the first depot path from mappings to get the `Client`
 - If no matching client found in registry, starts with empty state
 - Imports the Client's changelists and file revisions into internal state
+- `is_path_in_client_view()` is inherited from the base class
 
 #### State Management
 
 Internal state structure:
+- `_mappings: list[tuple[str, Path]]`: Client mappings (inherited from base class)
 - `_changelists: dict[int, Changelist]`: All changelists by number
 - `_shelved_files: dict[int, dict[str, bytes]]`: Shelved files by changelist number
 - `_file_revisions: dict[str, dict[int, bytes]]`: File content by depot path and revision
+- `_users: dict[str, User]`: User information by username
 - `_next_changelist_number: int`: Counter for changelist generation
 
 `export_client()` creates a `Client` from the internal state, copying changelists and file revisions.
@@ -185,6 +206,18 @@ class ShelvedChange:
     files: dict[str, bytes]
 ```
 
+#### User
+
+```python
+@dataclass(frozen=True)
+class User:
+    username: str
+    email: str
+    full_name: str
+```
+
+Represents a Perforce user with their contact information. Used for proper Git commit authorship.
+
 #### Client
 
 ```python
@@ -214,6 +247,8 @@ p4 = RealPerforceEngine(mappings)
 changelists = p4.get_changelists(status=ChangelistStatus.SUBMITTED, max_results=100)
 for cl in changelists:
     for file_action in cl.files:
+        if not p4.is_path_in_client_view(file_action.depot_path):
+            continue
         if file_action.action != FileActionType.DELETE:
             content = p4.get_changelist_file_content(
                 file_action.depot_path,
@@ -313,6 +348,7 @@ from prgit.sync.perforce.types import (
     FileAction,
     FileActionType,
     ShelvedChange,
+    User,
     Client,
 )
 
@@ -326,6 +362,7 @@ __all__ = [
     "FileAction",
     "FileActionType",
     "ShelvedChange",
+    "User",
     "Client",
 ]
 ```
@@ -348,3 +385,4 @@ Basic tests in `tests/sync/perforce/test_virtual_engine.py`:
 - Verify client initialization preserves all changelists and file revisions
 - Test registry registration, retrieval, and cleanup
 - Test importing real client via export_client()
+- Test `is_path_in_client_view()` correctly identifies files within and outside client mappings

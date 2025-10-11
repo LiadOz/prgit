@@ -7,6 +7,7 @@ from prgit.sync.perforce.types import (
     FileAction,
     FileActionType,
     ShelvedChange,
+    User,
 )
 from prgit.sync.perforce.virtual_engine import (
     VirtualPerforceEngine,
@@ -23,5 +24,6 @@ __all__ = [
     "FileAction",
     "FileActionType",
     "ShelvedChange",
+    "User",
     "Client",
 ]

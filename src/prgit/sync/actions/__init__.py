@@ -4,10 +4,12 @@ from .exceptions import (
     SyncConfigurationError,
     SyncExecutionError,
 )
+from .perforce_to_git_actions import ImportChangelist
 
 __all__ = [
     "SyncAction",
     "SyncActionError",
     "SyncConfigurationError",
     "SyncExecutionError",
+    "ImportChangelist",
 ]

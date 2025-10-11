@@ -45,6 +45,13 @@ class ShelvedChange:
 
 
 @dataclass(frozen=True)
+class User:
+    username: str
+    email: str
+    full_name: str
+
+
+@dataclass(frozen=True)
 class Client:
     changelists: dict[int, Changelist]
     file_revisions: dict[str, dict[int, bytes]]
