@@ -1,6 +1,0 @@
----
-alwaysApply: false
----
-
-- Top level architecture decisions are written in ./docs/architecture/overview.md.
-- When creating a new high level component, create a new file in ./docs/architecture/<high_level_component_name>.md linking from the overview.md.
