@@ -8,9 +8,9 @@ args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
 [tasks.test]
 command = "cargo"
-args = ["nextest", "run", "--all"]
+args = ["test", "--all", "--", "--nocapture"]
 
-[tasks.coverage]
+[tasks.cov]  # 👈 renamed from coverage
 command = "cargo"
 args = ["llvm-cov"]
 
@@ -19,4 +19,4 @@ command = "cargo"
 args = ["audit"]
 
 [tasks.ci]
-dependencies = ["fmt", "lint", "test", "coverage", "audit"]
+dependencies = ["fmt", "lint", "test", "cov", "audit"]
