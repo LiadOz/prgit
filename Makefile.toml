@@ -10,7 +10,7 @@ args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
 command = "cargo"
 args = ["test", "--all", "--", "--nocapture"]
 
-[tasks.cov]  # 👈 renamed from coverage
+[tasks.cov]
 command = "cargo"
 args = ["llvm-cov"]
 
