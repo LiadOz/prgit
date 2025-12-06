@@ -1,24 +1,6 @@
 use std::path::{Path, PathBuf};
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
-
-use super::commands::ChangesCmd;
-
-pub trait P4Command {
-    type Response: DeserializeOwned;
-    fn command_name() -> &'static str;
-    fn args(&self) -> &[String];
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum P4Error {
-    #[error("Failed to execute command: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("Failed to parse JSON result: {0}")]
-    JsonError(#[from] serde_json::Error),
-    #[error("Command Failed: {0}")]
-    CommandFailed(String),
-}
+use crate::perforce::error::{P4Error, ErrorResponse};
+use crate::perforce::commands::{InfoCommand, InfoResponse};
 
 pub struct P4 {
     p4_path: PathBuf,
@@ -31,7 +13,14 @@ pub struct P4 {
 
 impl P4 {
     pub fn new() -> Self {
-        return Self {p4_path: PathBuf::from("p4"), port: None, user: None, password: None, client: None, retries: None};
+        Self {
+            p4_path: PathBuf::from("p4"),
+            port: None,
+            user: None,
+            password: None,
+            client: None,
+            retries: None,
+        }
     }
 
     pub fn with_p4_path(mut self, p4_path: impl AsRef<Path>) -> Self {
@@ -53,7 +42,7 @@ impl P4 {
         self.password = Some(password.as_ref().to_string());
         self
     }
-    
+
     pub fn with_client(mut self, client: impl AsRef<str>) -> Self {
         self.client = Some(client.as_ref().to_string());
         self
@@ -84,12 +73,13 @@ impl P4 {
             cmd.arg(password);
         }
         cmd.args(args);
-        return cmd;
+        cmd
     }
 
-    fn run(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
+    pub(crate) fn run(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
         let mut cmd = self.build_cmd(args);
         log::debug!("Running command: {:?}", cmd);
+        println!("Running command: {:?}", cmd);
         let output = cmd.output()?;
         log::debug!("Command output: {:?}\nError output: {:?}", output.stdout, output.stderr);
         let json = serde_json::from_slice(&output.stdout)?;
@@ -106,46 +96,22 @@ impl P4 {
         Ok(info_response)
     }
 
-    pub fn changes(&self) -> ChangesCmd<'_> {
-        ChangesCmd::new(self)
-    }
-
-    pub(crate) fn execute<C: P4Command>(&self, cmd: &C) -> Result<C::Response, P4Error> {
-        let mut args: Vec<&str> = vec![C::command_name()];
-        let arg_strings = cmd.args();
-        args.extend(arg_strings.iter().map(|s| s.as_str()));
-        let json = self.run(&args)?;
-        Ok(serde_json::from_value(json)?)
+    pub fn new_info<'a>(&self, test: &'a str) -> InfoCommand<'_, 'a> {
+        InfoCommand::new(self, test)
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct ErrorResponse {
-    data: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct InfoResponse {
-    #[serde(rename = "ServerID")]
-    pub server_id: String,
-    pub client_name: String,
-    pub client_root: String,
-    pub client_cwd: String,
-    pub client_host: String,
-    pub server_version: String,
-    pub user_name: String,
-}
-
-
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::perforce::commands::P4Command;
 
     #[test]
     fn test_p4_new() {
         let p4 = P4::new();
         assert!(matches!(p4.run(&["-h"]), Err(P4Error::JsonError(_))));
         assert!(matches!(p4.run(&["inf"]), Err(P4Error::CommandFailed(ref error)) if error.starts_with("Unknown command")));
-        assert!(p4.info().is_ok());
+        println!("{:?}", p4.new_info("test").short(true).run());
+        assert!(p4.new_info("test").short(true).run().is_ok());
     }
 }
