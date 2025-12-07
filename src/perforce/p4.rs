@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use crate::perforce::error::{P4Error, ErrorResponse};
-use crate::perforce::commands::{InfoCommand, InfoResponse};
+use crate::perforce::commands::{InfoCommand};
 
 pub struct P4 {
     p4_path: PathBuf,
@@ -79,7 +79,6 @@ impl P4 {
     pub(crate) fn run(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
         let mut cmd = self.build_cmd(args);
         log::debug!("Running command: {:?}", cmd);
-        println!("Running command: {:?}", cmd);
         let output = cmd.output()?;
         log::debug!("Command output: {:?}\nError output: {:?}", output.stdout, output.stderr);
         let json = serde_json::from_slice(&output.stdout)?;
@@ -90,15 +89,10 @@ impl P4 {
         Ok(json)
     }
 
-    pub fn info(&self) -> Result<InfoResponse, P4Error> {
-        let json = self.run(&["info"])?;
-        let info_response: InfoResponse = serde_json::from_value(json)?;
-        Ok(info_response)
-    }
-
-    pub fn new_info<'a>(&self, test: &'a str) -> InfoCommand<'_, 'a> {
+    pub fn info<'a>(&self, test: &'a str) -> InfoCommand<'_, 'a> {
         InfoCommand::new(self, test)
     }
+
 }
 
 #[cfg(test)]
@@ -111,7 +105,6 @@ mod tests {
         let p4 = P4::new();
         assert!(matches!(p4.run(&["-h"]), Err(P4Error::JsonError(_))));
         assert!(matches!(p4.run(&["inf"]), Err(P4Error::CommandFailed(ref error)) if error.starts_with("Unknown command")));
-        println!("{:?}", p4.new_info("test").short(true).run());
-        assert!(p4.new_info("test").short(true).run().is_ok());
+        assert!(p4.info("test").short(true).run().is_ok());
     }
 }
