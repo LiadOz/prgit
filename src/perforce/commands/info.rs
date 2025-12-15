@@ -1,23 +1,33 @@
 use serde::Deserialize;
 use crate::perforce::p4::P4;
-use crate::perforce::commands::command::{make_command, P4Command, P4CommandBase};
+use crate::perforce::error::P4Error;
+use crate::perforce::commands::command::P4Command;
+use derive_setters::Setters;
 
-make_command!(InfoCommand<'p, 'a>, "info",
-    [test: &'a str],
+#[derive(Setters)]
+#[setters(into, strip_option)]
+pub struct InfoCommand<'p> {
+    #[setters(skip)]
+    p4: &'p P4,
+    #[setters(bool)]
     short: bool,
-);
+}
 
-impl P4Command for InfoCommand<'_, '_> {
-    type Response = InfoResponse;
-    fn args(&self) -> Vec<&str> {
-        let mut args = vec![];
-        if let Some(short) = self.short {
-            if short {
-                args.push("-s");
-            }
+impl<'p> InfoCommand<'p> {
+    pub fn new(p4: &'p P4) -> Self {
+        Self {
+            p4: p4,
+            short: false,
         }
-        args.push(self.test);
-        args
+    }
+}
+
+impl<'p> P4Command for InfoCommand<'p> {
+    type Response = InfoResponse;
+    fn run(&self) -> Result<Self::Response, P4Error> {
+        let json = self.p4.run(&["info", if self.short { "-s" } else { "" }])?;
+        let response: Self::Response = serde_json::from_value(json)?;
+        Ok(response)
     }
 }
 
