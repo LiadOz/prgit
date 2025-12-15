@@ -83,6 +83,14 @@ impl P4 {
         log::debug!("Command output: {:?}\nError output: {:?}", output.stdout, output.stderr);
         let json = serde_json::from_slice(&output.stdout)?;
         if !output.status.success() {
+            if output.stderr.starts_with(b"Perforce client error:") {
+                let stderr_str = String::from_utf8_lossy(&output.stderr);
+                match stderr_str.lines().nth(1).unwrap_or("").trim() {
+                    "Connect to server failed; check $P4PORT." => return Err(P4Error::ConnectionFailed),
+                    _ => return Err(P4Error::UnknownError(stderr_str.into_owned())),
+                }
+            }
+
             let error_response: ErrorResponse = serde_json::from_value(json)?;
             return Err(P4Error::CommandFailed(error_response.data));
         }

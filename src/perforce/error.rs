@@ -8,6 +8,10 @@ pub enum P4Error {
     JsonError(#[from] serde_json::Error),
     #[error("Command Failed: {0}")]
     CommandFailed(String),
+    #[error("Connection failed")]
+    ConnectionFailed,
+    #[error("Unknown error: {0}")]
+    UnknownError(String),
 }
 
 #[derive(Deserialize, Debug)]
