@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use crate::perforce::error::{P4Error, ErrorResponse};
-use crate::perforce::commands::{InfoCommand};
+use crate::perforce::commands::{InfoCommand, ChangesCommand};
 use derive_setters::Setters;
 
 #[derive(Setters)]
@@ -45,12 +45,11 @@ impl P4 {
         cmd
     }
 
-    pub(crate) fn run(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
+    fn run_cmd(&self, args: &[&str], multi_line: bool) -> Result<serde_json::Value, P4Error> {
         let mut cmd = self.build_cmd(args);
         log::debug!("Running command: {:?}", cmd);
         let output = cmd.output()?;
         log::debug!("Command output: {:?}\nError output: {:?}", output.stdout, output.stderr);
-        let json = serde_json::from_slice(&output.stdout)?;
         if !output.status.success() {
             if output.stderr.starts_with(b"Perforce client error:") {
                 let stderr_str = String::from_utf8_lossy(&output.stderr);
@@ -60,14 +59,33 @@ impl P4 {
                 }
             }
 
-            let error_response: ErrorResponse = serde_json::from_value(json)?;
+            let error_response: ErrorResponse = serde_json::from_slice(&output.stdout)?;
             return Err(P4Error::CommandFailed(error_response.data));
         }
-        Ok(json)
+        if multi_line {
+            let json_array = format!("[{}]", 
+                String::from_utf8_lossy(&output.stdout).lines().map(|line| line.trim()).filter(|line| !line.is_empty()).collect::<Vec<&str>>().join(",")
+            );
+            Ok(serde_json::from_str(&json_array)?)
+        } else {
+            Ok(serde_json::from_slice(&output.stdout)?)
+        }
+    }
+
+    pub(crate) fn run(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
+        self.run_cmd(args, false)
+    }
+
+    pub(crate) fn run_multi_line(&self, args: &[&str]) -> Result<serde_json::Value, P4Error> {
+        self.run_cmd(args, true)
     }
 
     pub fn info<'p>(&'p self) -> InfoCommand<'p> {
         InfoCommand::new(self)
+    }
+
+    pub fn changes<'p, 'f>(&'p self, files: &'f [&'f str]) -> ChangesCommand<'p, 'f> {
+        ChangesCommand::new(self, files)
     }
 
 }
@@ -76,6 +94,7 @@ impl P4 {
 mod tests {
     use super::*;
     use crate::perforce::commands::P4Command;
+    use crate::perforce::commands::types::ChangeStatus;
 
     #[test]
     fn test_p4_new() {
@@ -83,5 +102,9 @@ mod tests {
         assert!(matches!(p4.run(&["-h"]), Err(P4Error::JsonError(_))));
         assert!(matches!(p4.run(&["inf"]), Err(P4Error::CommandFailed(ref error)) if error.starts_with("Unknown command")));
         assert!(p4.info().short().run().is_ok());
+        let changes = p4.changes(&[]).long().run().unwrap();
+        assert!(!changes.is_empty());
+        assert!(changes.len() == 3);
+        assert!(changes[0].status == ChangeStatus::Submitted);
     }
 }
