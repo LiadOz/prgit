@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use crate::perforce::p4::P4;
 use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::P4Command;
+use crate::perforce::commands::command::{P4Command, CmdType};
 use derive_setters::Setters;
 
 #[derive(Setters)]
@@ -25,7 +25,11 @@ impl<'p> InfoCommand<'p> {
 impl<'p> P4Command for InfoCommand<'p> {
     type Response = InfoResponse;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let json = self.p4.run(&["info", if self.short { "-s" } else { "" }])?;
+        let mut process = self.p4.build_cmd("info", CmdType::Query);
+        if self.short {
+            process.cmd.args(["-s"]);
+        }
+        let json = self.p4.run(process)?;
         let response: Self::Response = serde_json::from_value(json)?;
         Ok(response)
     }

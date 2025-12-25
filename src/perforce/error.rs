@@ -11,7 +11,9 @@ pub enum P4Error {
     #[error("Connection failed")]
     ConnectionFailed,
     #[error("Unknown error: {0}")]
-    UnknownError(String),
+    UnexpectedError(String),
+    #[error("Usage error: {0}")]
+    UsageError(String),
 }
 
 #[derive(Deserialize, Debug)]

@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use crate::perforce::p4::P4;
 use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::P4Command;
+use crate::perforce::commands::command::{P4Command, CmdType};
 use derive_setters::Setters;
 use crate::perforce::commands::types::ChangeStatus;
 
@@ -41,33 +41,27 @@ impl<'p, 'f> ChangesCommand<'p, 'f> {
 impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
     type Response = Vec<ChangeData>;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let mut args = vec!["changes"];
+        let mut process = self.p4.build_cmd("changes", CmdType::Query);
         if self.include_integrated {
-            args.push("-i");
+            process.cmd.args(["-i"]);
         }
         if self.long {
-            args.push("-l");
+            process.cmd.args(["-l"]);
         }
-        let since_changelist_str;
         if let Some(since_changelist) = &self.since_changelist {
-            since_changelist_str = since_changelist.to_string();
-            args.extend(["-e", &since_changelist_str]);
+            process.cmd.args(["-e", &since_changelist.to_string()]);
         }
-        let max_changes_str;
         if let Some(max_changes) = &self.max_changes {
-            max_changes_str = max_changes.to_string();
-            args.extend(["-m", &max_changes_str]);
+            process.cmd.args(["-m", &max_changes.to_string()]);
         }
-        let status_str;
         if let Some(status) = &self.status {
-            status_str = status.to_string();
-            args.extend(["-s", &status_str]);
+            process.cmd.args(["-s", &status.to_string()]);
         }
         if let Some(user) = &self.user {
-            args.extend(["-u", &user]);
+            process.cmd.args(["-u", user]);
         }
-        args.extend(self.files.iter().map(|file| file));
-        let json = self.p4.run_multi_line(&args)?;
+        process.cmd.args(self.files.iter().map(|file| *file));
+        let json = self.p4.run_multi_line(process)?;
         let response: Self::Response = serde_json::from_value(json)?;
         Ok(response)
     }
@@ -82,7 +76,7 @@ pub struct ChangeData {
     pub change_type: String,
     pub client: String,
     pub desc: String,
-    pub path: String,
+    pub path: Option<String>,
     pub status: ChangeStatus,
     pub time: String,
     pub user: String,
