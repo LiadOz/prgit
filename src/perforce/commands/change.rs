@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use crate::perforce::p4::P4;
 use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::{P4Command, P4Process, CmdType};
+use crate::perforce::commands::command::{P4Command, CmdType};
 use crate::perforce::commands::types::{ChangeStatus, deserialize_p4_date};
 use derive_setters::Setters;
 
@@ -27,20 +27,13 @@ impl<'p, T> ChangeCommand<'p, T> {
         }
     }
 
-    fn build_cmd(&self, cmd_type: CmdType) -> P4Process {
-        let mut process = self.p4.build_cmd("change", cmd_type);
-        if self.force {
-            process.cmd.args(["-f"]);
-        }
-        process
-    }
 }
 
 impl<'p> P4Command for ChangeCommand<'p, usize> {
     type Response = ChangeSpec;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let mut process = self.build_cmd(CmdType::FormOutput);
-        process.cmd.args([&self.data.to_string()]);
+        let mut process = self.p4.build_cmd("change", CmdType::FormOutput);
+        process.flag(self.force, "-f").arg(&self.data.to_string());
         let json = self.p4.run(process)?;
         Ok(serde_json::from_value(json)?)
     }
@@ -49,7 +42,8 @@ impl<'p> P4Command for ChangeCommand<'p, usize> {
 impl<'p, 's> P4Command for ChangeCommand<'p, &'s ChangeSpec> {
     type Response = usize;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let process = self.build_cmd(CmdType::FormInput);
+        let mut process = self.p4.build_cmd("change", CmdType::FormInput);
+        process.flag(self.force, "-f");
         let stdin_data = self.data.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
         let result = String::from_utf8_lossy(&output.stdout);

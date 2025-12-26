@@ -42,28 +42,16 @@ impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
     type Response = Vec<ChangeData>;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.p4.build_cmd("changes", CmdType::Query);
-        if self.include_integrated {
-            process.cmd.args(["-i"]);
-        }
-        if self.long {
-            process.cmd.args(["-l"]);
-        }
-        if let Some(since_changelist) = &self.since_changelist {
-            process.cmd.args(["-e", &since_changelist.to_string()]);
-        }
-        if let Some(max_changes) = &self.max_changes {
-            process.cmd.args(["-m", &max_changes.to_string()]);
-        }
-        if let Some(status) = &self.status {
-            process.cmd.args(["-s", &status.to_string()]);
-        }
-        if let Some(user) = &self.user {
-            process.cmd.args(["-u", user]);
-        }
-        process.cmd.args(self.files.iter().map(|file| *file));
+        process
+            .flag(self.include_integrated, "-i")
+            .flag(self.long, "-l")
+            .opt("-e", &self.since_changelist)
+            .opt("-m", &self.max_changes)
+            .opt("-s", &self.status)
+            .opt("-u", &self.user)
+            .args(self.files);
         let json = self.p4.run_multi_line(process)?;
-        let response: Self::Response = serde_json::from_value(json)?;
-        Ok(response)
+        Ok(serde_json::from_value(json)?)
     }
 }
 
