@@ -4,7 +4,7 @@ use std::process::{Output, Stdio};
 use crate::error::P4Error;
 
 #[derive(Debug)]
-pub(crate) enum CmdType {
+pub enum CmdType {
     FormInput,
     FormOutput,
     Query,
@@ -16,7 +16,7 @@ pub trait P4Command {
 }
 
 #[derive(Debug)]
-pub(crate) struct P4Process {
+pub struct P4Process {
     cmd: std::process::Command,
     pub(crate) cmd_type: CmdType,
 }

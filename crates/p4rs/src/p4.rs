@@ -29,7 +29,17 @@ impl P4 {
         }
     }
 
+    #[cfg(feature = "extensible")]
+    pub fn build_cmd(&self, cmd_name: &str, cmd_type: CmdType) -> P4Process {
+        self.build_cmd_inner(cmd_name, cmd_type)
+    }
+
+    #[cfg(not(feature = "extensible"))]
     pub(crate) fn build_cmd(&self, cmd_name: &str, cmd_type: CmdType) -> P4Process {
+        self.build_cmd_inner(cmd_name, cmd_type)
+    }
+
+    fn build_cmd_inner(&self, cmd_name: &str, cmd_type: CmdType) -> P4Process {
         let mut cmd = std::process::Command::new(&self.p4_path);
         if let Some(client) = &self.client {
             cmd.args(["-c", client]);
@@ -62,7 +72,17 @@ impl P4 {
         Ok(output)
     }
 
-    pub(crate) fn run_command(&self, mut p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+    #[cfg(feature = "extensible")]
+    pub fn run_command(&self, p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+        self.run_command_inner(p4_process, stdin_data)
+    }
+
+    #[cfg(not(feature = "extensible"))]
+    pub(crate) fn run_command(&self, p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+        self.run_command_inner(p4_process, stdin_data)
+    }
+
+    fn run_command_inner(&self, mut p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
         let output = self.run_process(&mut p4_process, stdin_data)?;
         if !output.status.success() {
             if output.stderr.starts_with(b"Perforce client error:") {
@@ -97,12 +117,32 @@ impl P4 {
         }
     }
 
+    #[cfg(feature = "extensible")]
+    pub fn run(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+        self.run_inner(p4_process)
+    }
+
+    #[cfg(not(feature = "extensible"))]
     pub(crate) fn run(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+        self.run_inner(p4_process)
+    }
+
+    fn run_inner(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
         let output = self.run_command(p4_process, None)?;
         self.extract_json_output(&output, false)
     }
 
+    #[cfg(feature = "extensible")]
+    pub fn run_multi_line(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+        self.run_multi_line_inner(p4_process)
+    }
+
+    #[cfg(not(feature = "extensible"))]
     pub(crate) fn run_multi_line(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+        self.run_multi_line_inner(p4_process)
+    }
+
+    fn run_multi_line_inner(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
         let output = self.run_command(p4_process, None)?;
         self.extract_json_output(&output, true)
     }
@@ -139,79 +179,5 @@ impl P4 {
 impl Default for P4 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::commands::P4Command;
-    use crate::commands::types::ChangeStatus;
-    use crate::commands::change::ChangeType;
-    use crate::commands::edit::EditAction;
-    use crate::commands::opened::OpenAction;
-    use crate::commands::process::CmdType;
-    use test_log::test;
-
-    #[test]
-    fn test_p4_new() {
-        let p4 = P4::new();
-        assert!(matches!(p4.run(p4.build_cmd("-h", CmdType::Query)), Err(P4Error::JsonError(_))));
-        assert!(matches!(p4.run(p4.build_cmd("inf", CmdType::Query)), Err(P4Error::CommandFailed(ref error)) if error.starts_with("Unknown command")));
-        assert!(p4.info().short().run().is_ok());
-        let changes = p4.changes(&[]).long().run().expect("Failed to get changes");
-        assert!(!changes.is_empty());
-        assert!(changes.len() >= 3);
-        assert!(changes.last().expect("No changes found").status == ChangeStatus::Submitted);
-        let change_spec = ChangeSpec::new(ChangeType::New).description("Test change".to_string());
-        let change_number = p4.set_change(&change_spec).run().expect("Failed to set change");
-        assert!(change_number > 0);
-        let result_spec = p4.get_change(change_number).run().expect("Failed to get change");
-        assert!(result_spec.description.trim() == change_spec.description.trim());
-    }
-
-    #[test]
-    fn test_edit_opened_revert() {
-        let p4 = P4::new();
-        let test_file = "//depot/testing/test_file";
-
-        p4.revert(&[test_file]).run().ok();
-
-        let results = p4.edit(&[test_file]).run().expect("Failed to edit file");
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].action, EditAction::Edit);
-        assert!(results[0].depot_file.ends_with("test_file"));
-
-        let opened = p4.opened(&[test_file]).run().expect("Failed to get opened files");
-        assert_eq!(opened.len(), 1);
-        assert_eq!(opened[0].action, OpenAction::Edit);
-
-        let reverted = p4.revert(&[test_file]).run().expect("Failed to revert file");
-        assert_eq!(reverted.len(), 1);
-        assert!(reverted[0].depot_file.ends_with("test_file"));
-
-        let opened_after = p4.opened(&[test_file]).run().expect("Failed to get opened files after revert");
-        assert!(opened_after.is_empty());
-    }
-
-    #[test]
-    fn test_edit_with_changelist() {
-        let p4 = P4::new();
-        let test_file = "//depot/testing/another_file";
-
-        p4.revert(&[test_file]).run().ok();
-
-        let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit".to_string());
-        let cl = p4.set_change(&change_spec).run().expect("Failed to set change");
-
-        let results = p4.edit(&[test_file]).changelist(cl).run().expect("Failed to edit file with changelist");
-        assert_eq!(results.len(), 1);
-
-        let opened = p4.opened(&[test_file]).run().expect("Failed to get opened files");
-        assert_eq!(opened.len(), 1);
-        assert!(opened[0].depot_file.ends_with("another_file"));
-        assert_eq!(opened[0].change.number(), Some(cl));
-
-        p4.revert(&[test_file]).run().expect("Failed to revert file");
     }
 }

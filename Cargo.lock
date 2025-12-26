@@ -870,6 +870,7 @@ dependencies = [
  "derive_setters",
  "env_logger",
  "log",
+ "p4rs",
  "serde",
  "serde_json",
  "serde_with",

@@ -1,0 +1,19 @@
+[tasks.fmt]
+command = "cargo"
+args = ["fmt", "--", "--check"]
+
+[tasks.lint]
+command = "cargo"
+args = ["clippy", "--all-targets", "--", "-D", "warnings"]
+
+[tasks.test]
+command = "cargo"
+args = ["test", "--", "--nocapture"]
+
+[tasks.cov]
+command = "cargo"
+args = ["llvm-cov"]
+
+[tasks.ci]
+dependencies = ["fmt", "lint", "test", "cov"]
+

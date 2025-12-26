@@ -16,3 +16,7 @@ pub use commands::revert::RevertResult;
 
 pub use commands::types::{ChangeStatus, FileType, BaseFileType};
 
+#[cfg(feature = "extensible")]
+pub mod extensible {
+    pub use crate::commands::process::{P4Process, CmdType};
+}
