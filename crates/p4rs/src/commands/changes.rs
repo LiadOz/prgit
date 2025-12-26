@@ -1,10 +1,10 @@
+use crate::commands::process::{CmdType, P4Command};
+use crate::commands::types::ChangeStatus;
+use crate::error::P4Error;
+use crate::p4::P4;
+use derive_setters::Setters;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
-use crate::p4::P4;
-use crate::error::P4Error;
-use crate::commands::process::{P4Command, CmdType};
-use derive_setters::Setters;
-use crate::commands::types::ChangeStatus;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -26,8 +26,8 @@ pub struct ChangesCommand<'p, 'f> {
 impl<'p, 'f> ChangesCommand<'p, 'f> {
     pub fn new(p4: &'p P4, files: &'f [&'f str]) -> Self {
         Self {
-            p4: p4,
-            files: files,
+            p4,
+            files,
             include_integrated: false,
             long: false,
             since_changelist: None,

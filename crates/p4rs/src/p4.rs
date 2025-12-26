@@ -1,9 +1,9 @@
-use std::path::PathBuf;
+use crate::commands::change::{ChangeCommand, ChangeSpec};
 use crate::commands::process::{CmdType, P4Process};
-use crate::error::{P4Error, ErrorResponse};
-use crate::commands::{InfoCommand, ChangesCommand, EditCommand, OpenedCommand, RevertCommand};
-use crate::commands::change::{ChangeSpec, ChangeCommand};
+use crate::commands::{ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand};
+use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
+use std::path::PathBuf;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -15,7 +15,6 @@ pub struct P4 {
     client: Option<String>,
     retries: Option<usize>,
 }
-
 
 impl P4 {
     pub fn new() -> Self {
@@ -61,41 +60,67 @@ impl P4 {
         P4Process::new(cmd, cmd_type)
     }
 
-    fn run_process(&self, process: &mut P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+    fn run_process(
+        &self,
+        process: &mut P4Process,
+        stdin_data: Option<&str>,
+    ) -> Result<std::process::Output, P4Error> {
         log::debug!("Running process: {:?}", process);
         let output = match stdin_data {
             Some(data) => process.run_with_stdin(data)?,
             None => process.output()?,
         };
-        log::debug!("Command output: {:?}", String::from_utf8_lossy(&output.stdout));
-        log::debug!("Error output: {:?}", String::from_utf8_lossy(&output.stderr));
+        log::debug!(
+            "Command output: {:?}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        log::debug!(
+            "Error output: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         Ok(output)
     }
 
     #[cfg(feature = "extensible")]
-    pub fn run_command(&self, p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+    pub fn run_command(
+        &self,
+        p4_process: P4Process,
+        stdin_data: Option<&str>,
+    ) -> Result<std::process::Output, P4Error> {
         self.run_command_inner(p4_process, stdin_data)
     }
 
     #[cfg(not(feature = "extensible"))]
-    pub(crate) fn run_command(&self, p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+    pub(crate) fn run_command(
+        &self,
+        p4_process: P4Process,
+        stdin_data: Option<&str>,
+    ) -> Result<std::process::Output, P4Error> {
         self.run_command_inner(p4_process, stdin_data)
     }
 
-    fn run_command_inner(&self, mut p4_process: P4Process, stdin_data: Option<&str>) -> Result<std::process::Output, P4Error> {
+    fn run_command_inner(
+        &self,
+        mut p4_process: P4Process,
+        stdin_data: Option<&str>,
+    ) -> Result<std::process::Output, P4Error> {
         let output = self.run_process(&mut p4_process, stdin_data)?;
         if !output.status.success() {
             if output.stderr.starts_with(b"Perforce client error:") {
                 let stderr_str = String::from_utf8_lossy(&output.stderr);
                 match stderr_str.lines().nth(1).unwrap_or("").trim() {
-                    "Connect to server failed; check $P4PORT." => return Err(P4Error::ConnectionFailed),
+                    "Connect to server failed; check $P4PORT." => {
+                        return Err(P4Error::ConnectionFailed)
+                    }
                     _ => return Err(P4Error::UnexpectedError(stderr_str.into_owned())),
                 }
             }
 
             match p4_process.cmd_type {
                 CmdType::FormInput => {
-                    return Err(P4Error::CommandFailed(String::from_utf8_lossy(&output.stderr).into_owned()));
+                    return Err(P4Error::CommandFailed(
+                        String::from_utf8_lossy(&output.stderr).into_owned(),
+                    ));
                 }
                 _ => {
                     let error_response: ErrorResponse = serde_json::from_slice(&output.stdout)?;
@@ -106,10 +131,20 @@ impl P4 {
         Ok(output)
     }
 
-    fn extract_json_output(&self, output: &std::process::Output, multi_line: bool) -> Result<serde_json::Value, P4Error> {
+    fn extract_json_output(
+        &self,
+        output: &std::process::Output,
+        multi_line: bool,
+    ) -> Result<serde_json::Value, P4Error> {
         if multi_line {
-            let json_array = format!("[{}]", 
-                String::from_utf8_lossy(&output.stdout).lines().map(|line| line.trim()).filter(|line| !line.is_empty()).collect::<Vec<&str>>().join(",")
+            let json_array = format!(
+                "[{}]",
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(|line| line.trim())
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join(",")
             );
             Ok(serde_json::from_str(&json_array)?)
         } else {
@@ -138,7 +173,10 @@ impl P4 {
     }
 
     #[cfg(not(feature = "extensible"))]
-    pub(crate) fn run_multi_line(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+    pub(crate) fn run_multi_line(
+        &self,
+        p4_process: P4Process,
+    ) -> Result<serde_json::Value, P4Error> {
         self.run_multi_line_inner(p4_process)
     }
 
@@ -155,7 +193,10 @@ impl P4 {
         ChangesCommand::new(self, files)
     }
 
-    pub fn set_change<'p, 's>(&'p self, change_spec: &'s ChangeSpec) -> ChangeCommand<'p, &'s ChangeSpec> {
+    pub fn set_change<'p, 's>(
+        &'p self,
+        change_spec: &'s ChangeSpec,
+    ) -> ChangeCommand<'p, &'s ChangeSpec> {
         ChangeCommand::new(self, change_spec)
     }
 

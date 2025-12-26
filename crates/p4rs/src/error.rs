@@ -20,4 +20,3 @@ pub enum P4Error {
 pub(crate) struct ErrorResponse {
     pub data: String,
 }
-

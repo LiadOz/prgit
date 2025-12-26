@@ -1,8 +1,8 @@
-use serde::Deserialize;
-use crate::p4::P4;
+use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
-use crate::commands::process::{P4Command, CmdType};
+use crate::p4::P4;
 use derive_setters::Setters;
+use serde::Deserialize;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -15,10 +15,7 @@ pub struct InfoCommand<'p> {
 
 impl<'p> InfoCommand<'p> {
     pub fn new(p4: &'p P4) -> Self {
-        Self {
-            p4: p4,
-            short: false,
-        }
+        Self { p4, short: false }
     }
 }
 

@@ -1,10 +1,13 @@
-use p4rs::{P4, P4Command, P4Error, ChangeSpec, ChangeType, ChangeStatus, EditAction, OpenAction};
 use p4rs::extensible::CmdType;
+use p4rs::{ChangeSpec, ChangeStatus, ChangeType, EditAction, OpenAction, P4Command, P4Error, P4};
 
 #[test]
 fn test_invalid_command_returns_json_error() {
     let p4 = P4::new();
-    assert!(matches!(p4.run(p4.build_cmd("-h", CmdType::Query)), Err(P4Error::JsonError(_))));
+    assert!(matches!(
+        p4.run(p4.build_cmd("-h", CmdType::Query)),
+        Err(P4Error::JsonError(_))
+    ));
 }
 
 #[test]
@@ -37,9 +40,15 @@ fn test_changes() {
 fn test_change_spec() {
     let p4 = P4::new();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test change".to_string());
-    let change_number = p4.set_change(&change_spec).run().expect("Failed to set change");
+    let change_number = p4
+        .set_change(&change_spec)
+        .run()
+        .expect("Failed to set change");
     assert!(change_number > 0);
-    let result_spec = p4.get_change(change_number).run().expect("Failed to get change");
+    let result_spec = p4
+        .get_change(change_number)
+        .run()
+        .expect("Failed to get change");
     assert!(result_spec.description.trim() == change_spec.description.trim());
 }
 
@@ -55,15 +64,24 @@ fn test_edit_opened_revert() {
     assert_eq!(results[0].action, EditAction::Edit);
     assert!(results[0].depot_file.ends_with("test_file"));
 
-    let opened = p4.opened(&[test_file]).run().expect("Failed to get opened files");
+    let opened = p4
+        .opened(&[test_file])
+        .run()
+        .expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].action, OpenAction::Edit);
 
-    let reverted = p4.revert(&[test_file]).run().expect("Failed to revert file");
+    let reverted = p4
+        .revert(&[test_file])
+        .run()
+        .expect("Failed to revert file");
     assert_eq!(reverted.len(), 1);
     assert!(reverted[0].depot_file.ends_with("test_file"));
 
-    let opened_after = p4.opened(&[test_file]).run().expect("Failed to get opened files after revert");
+    let opened_after = p4
+        .opened(&[test_file])
+        .run()
+        .expect("Failed to get opened files after revert");
     assert!(opened_after.is_empty());
 }
 
@@ -75,16 +93,27 @@ fn test_edit_with_changelist() {
     p4.revert(&[test_file]).run().ok();
 
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit".to_string());
-    let cl = p4.set_change(&change_spec).run().expect("Failed to set change");
+    let cl = p4
+        .set_change(&change_spec)
+        .run()
+        .expect("Failed to set change");
 
-    let results = p4.edit(&[test_file]).changelist(cl).run().expect("Failed to edit file with changelist");
+    let results = p4
+        .edit(&[test_file])
+        .changelist(cl)
+        .run()
+        .expect("Failed to edit file with changelist");
     assert_eq!(results.len(), 1);
 
-    let opened = p4.opened(&[test_file]).run().expect("Failed to get opened files");
+    let opened = p4
+        .opened(&[test_file])
+        .run()
+        .expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert!(opened[0].depot_file.ends_with("another_file"));
     assert_eq!(opened[0].change.number(), Some(cl));
 
-    p4.revert(&[test_file]).run().expect("Failed to revert file");
+    p4.revert(&[test_file])
+        .run()
+        .expect("Failed to revert file");
 }
-

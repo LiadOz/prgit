@@ -53,23 +53,59 @@ pub struct FileType {
 
 impl FileType {
     pub fn new(base: BaseFileType) -> Self {
-        Self { base: Some(base), ..Default::default() }
+        Self {
+            base: Some(base),
+            ..Default::default()
+        }
     }
 
-    pub fn text() -> Self { Self::new(BaseFileType::Text) }
-    pub fn binary() -> Self { Self::new(BaseFileType::Binary) }
-    pub fn symlink() -> Self { Self::new(BaseFileType::Symlink) }
-    pub fn unicode() -> Self { Self::new(BaseFileType::Unicode) }
-    pub fn utf8() -> Self { Self::new(BaseFileType::Utf8) }
-    pub fn utf16() -> Self { Self::new(BaseFileType::Utf16) }
+    pub fn text() -> Self {
+        Self::new(BaseFileType::Text)
+    }
+    pub fn binary() -> Self {
+        Self::new(BaseFileType::Binary)
+    }
+    pub fn symlink() -> Self {
+        Self::new(BaseFileType::Symlink)
+    }
+    pub fn unicode() -> Self {
+        Self::new(BaseFileType::Unicode)
+    }
+    pub fn utf8() -> Self {
+        Self::new(BaseFileType::Utf8)
+    }
+    pub fn utf16() -> Self {
+        Self::new(BaseFileType::Utf16)
+    }
 
-    pub fn writable(mut self) -> Self { self.writable = true; self }
-    pub fn executable(mut self) -> Self { self.executable = true; self }
-    pub fn keyword_expansion(mut self) -> Self { self.keyword_expansion = true; self }
-    pub fn exclusive_lock(mut self) -> Self { self.exclusive_lock = true; self }
-    pub fn full_revisions(mut self) -> Self { self.full_revisions = true; self }
-    pub fn compressed(mut self) -> Self { self.compressed = true; self }
-    pub fn rcs_deltas(mut self) -> Self { self.rcs_deltas = true; self }
+    pub fn writable(mut self) -> Self {
+        self.writable = true;
+        self
+    }
+    pub fn executable(mut self) -> Self {
+        self.executable = true;
+        self
+    }
+    pub fn keyword_expansion(mut self) -> Self {
+        self.keyword_expansion = true;
+        self
+    }
+    pub fn exclusive_lock(mut self) -> Self {
+        self.exclusive_lock = true;
+        self
+    }
+    pub fn full_revisions(mut self) -> Self {
+        self.full_revisions = true;
+        self
+    }
+    pub fn compressed(mut self) -> Self {
+        self.compressed = true;
+        self
+    }
+    pub fn rcs_deltas(mut self) -> Self {
+        self.rcs_deltas = true;
+        self
+    }
 }
 
 impl std::fmt::Display for FileType {
@@ -77,13 +113,27 @@ impl std::fmt::Display for FileType {
         if let Some(base) = &self.base {
             write!(f, "{}", base)?;
         }
-        if self.writable { write!(f, "+w")?; }
-        if self.executable { write!(f, "+x")?; }
-        if self.keyword_expansion { write!(f, "+k")?; }
-        if self.exclusive_lock { write!(f, "+l")?; }
-        if self.full_revisions { write!(f, "+F")?; }
-        if self.compressed { write!(f, "+C")?; }
-        if self.rcs_deltas { write!(f, "+D")?; }
+        if self.writable {
+            write!(f, "+w")?;
+        }
+        if self.executable {
+            write!(f, "+x")?;
+        }
+        if self.keyword_expansion {
+            write!(f, "+k")?;
+        }
+        if self.exclusive_lock {
+            write!(f, "+l")?;
+        }
+        if self.full_revisions {
+            write!(f, "+F")?;
+        }
+        if self.compressed {
+            write!(f, "+C")?;
+        }
+        if self.rcs_deltas {
+            write!(f, "+D")?;
+        }
         Ok(())
     }
 }

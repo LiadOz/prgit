@@ -1,7 +1,7 @@
+use crate::error::P4Error;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Output, Stdio};
-use crate::error::P4Error;
 
 #[derive(Debug)]
 pub enum CmdType {
@@ -60,7 +60,8 @@ impl P4Process {
 
     pub fn run_with_stdin(&mut self, stdin_data: &str) -> std::io::Result<Output> {
         log::debug!("Writing stdin data: {:?}", stdin_data);
-        let mut child = self.cmd
+        let mut child = self
+            .cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

@@ -1,15 +1,15 @@
-pub mod process;
-pub mod info;
-pub mod changes;
-pub mod types;
 pub mod change;
+pub mod changes;
 pub mod edit;
+pub mod info;
 pub mod opened;
+pub mod process;
 pub mod revert;
+pub mod types;
 
-pub use process::P4Command;
-pub(crate) use info::InfoCommand;
 pub(crate) use changes::ChangesCommand;
 pub(crate) use edit::EditCommand;
+pub(crate) use info::InfoCommand;
 pub(crate) use opened::OpenedCommand;
+pub use process::P4Command;
 pub(crate) use revert::RevertCommand;

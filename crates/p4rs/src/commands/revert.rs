@@ -1,8 +1,8 @@
-use serde::Deserialize;
-use derive_setters::Setters;
-use crate::p4::P4;
+use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
-use crate::commands::process::{P4Command, CmdType};
+use crate::p4::P4;
+use derive_setters::Setters;
+use serde::Deserialize;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -22,7 +22,14 @@ pub struct RevertCommand<'p, 'f> {
 
 impl<'p, 'f> RevertCommand<'p, 'f> {
     pub fn new(p4: &'p P4, files: &'f [&'f str]) -> Self {
-        Self { p4, files, changelist: None, keep: false, preview: false, unchanged: false }
+        Self {
+            p4,
+            files,
+            changelist: None,
+            keep: false,
+            preview: false,
+            unchanged: false,
+        }
     }
 }
 

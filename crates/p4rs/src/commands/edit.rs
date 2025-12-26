@@ -1,9 +1,9 @@
-use serde::Deserialize;
-use derive_setters::Setters;
-use crate::p4::P4;
-use crate::error::P4Error;
-use crate::commands::process::{P4Command, CmdType};
+use crate::commands::process::{CmdType, P4Command};
 use crate::commands::types::FileType;
+use crate::error::P4Error;
+use crate::p4::P4;
+use derive_setters::Setters;
+use serde::Deserialize;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -22,7 +22,14 @@ pub struct EditCommand<'p, 'f> {
 
 impl<'p, 'f> EditCommand<'p, 'f> {
     pub fn new(p4: &'p P4, files: &'f [&'f str]) -> Self {
-        Self { p4, files, changelist: None, file_type: None, keep: false, preview: false }
+        Self {
+            p4,
+            files,
+            changelist: None,
+            file_type: None,
+            keep: false,
+            preview: false,
+        }
     }
 }
 
