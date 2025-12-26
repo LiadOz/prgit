@@ -156,3 +156,48 @@ impl std::fmt::Display for ChangeStatus {
         f.write_str(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base_file_type_display() {
+        assert_eq!(BaseFileType::Text.to_string(), "text");
+        assert_eq!(BaseFileType::Binary.to_string(), "binary");
+        assert_eq!(BaseFileType::Symlink.to_string(), "symlink");
+        assert_eq!(BaseFileType::Unicode.to_string(), "unicode");
+    }
+
+    #[test]
+    fn test_file_type_display() {
+        assert_eq!(FileType::text().to_string(), "text");
+        assert_eq!(FileType::binary().to_string(), "binary");
+        assert_eq!(FileType::text().writable().to_string(), "text+w");
+        assert_eq!(FileType::text().executable().to_string(), "text+x");
+        assert_eq!(
+            FileType::binary().writable().executable().to_string(),
+            "binary+w+x"
+        );
+    }
+
+    #[test]
+    fn test_file_type_all_modifiers() {
+        let ft = FileType::text()
+            .writable()
+            .executable()
+            .keyword_expansion()
+            .exclusive_lock()
+            .full_revisions()
+            .compressed()
+            .rcs_deltas();
+        assert_eq!(ft.to_string(), "text+w+x+k+l+F+C+D");
+    }
+
+    #[test]
+    fn test_change_status_display() {
+        assert_eq!(ChangeStatus::Pending.to_string(), "pending");
+        assert_eq!(ChangeStatus::Submitted.to_string(), "submitted");
+        assert_eq!(ChangeStatus::Shelved.to_string(), "shelved");
+    }
+}
