@@ -1,8 +1,8 @@
 use std::path::PathBuf;
-use crate::perforce::commands::command::{CmdType, P4Process};
-use crate::perforce::error::{P4Error, ErrorResponse};
-use crate::perforce::commands::{InfoCommand, ChangesCommand, EditCommand, OpenedCommand, RevertCommand};
-use crate::perforce::commands::change::{ChangeSpec, ChangeCommand};
+use crate::commands::process::{CmdType, P4Process};
+use crate::error::{P4Error, ErrorResponse};
+use crate::commands::{InfoCommand, ChangesCommand, EditCommand, OpenedCommand, RevertCommand};
+use crate::commands::change::{ChangeSpec, ChangeCommand};
 use derive_setters::Setters;
 
 #[derive(Setters)]
@@ -86,7 +86,7 @@ impl P4 {
         Ok(output)
     }
 
-    pub fn extract_json_output(&self, output: &std::process::Output, multi_line: bool) -> Result<serde_json::Value, P4Error> {
+    fn extract_json_output(&self, output: &std::process::Output, multi_line: bool) -> Result<serde_json::Value, P4Error> {
         if multi_line {
             let json_array = format!("[{}]", 
                 String::from_utf8_lossy(&output.stdout).lines().map(|line| line.trim()).filter(|line| !line.is_empty()).collect::<Vec<&str>>().join(",")
@@ -136,14 +136,21 @@ impl P4 {
     }
 }
 
+impl Default for P4 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::perforce::commands::P4Command;
-    use crate::perforce::commands::types::ChangeStatus;
-    use crate::perforce::commands::change::ChangeType;
-    use crate::perforce::commands::edit::EditAction;
-    use crate::perforce::commands::opened::OpenAction;
+    use crate::commands::P4Command;
+    use crate::commands::types::ChangeStatus;
+    use crate::commands::change::ChangeType;
+    use crate::commands::edit::EditAction;
+    use crate::commands::opened::OpenAction;
+    use crate::commands::process::CmdType;
     use test_log::test;
 
     #[test]

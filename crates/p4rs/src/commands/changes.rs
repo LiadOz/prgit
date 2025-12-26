@@ -1,10 +1,10 @@
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
-use crate::perforce::p4::P4;
-use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::{P4Command, CmdType};
+use crate::p4::P4;
+use crate::error::P4Error;
+use crate::commands::process::{P4Command, CmdType};
 use derive_setters::Setters;
-use crate::perforce::commands::types::ChangeStatus;
+use crate::commands::types::ChangeStatus;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]

@@ -1,9 +1,9 @@
 use serde::Deserialize;
 use derive_setters::Setters;
-use crate::perforce::p4::P4;
-use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::{P4Command, CmdType};
-use crate::perforce::commands::types::FileType;
+use crate::p4::P4;
+use crate::error::P4Error;
+use crate::commands::process::{P4Command, CmdType};
+use crate::commands::types::FileType;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -67,4 +67,3 @@ pub struct EditResult {
     #[serde(rename = "type")]
     pub file_type: String,
 }
-

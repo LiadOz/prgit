@@ -779,16 +779,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "nom"
-version = "4.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ad2a91a8e869eeb30b9cb3119ae87773a8f4ae617f41b1eb9c154b2905f7bd6"
-dependencies = [
- "memchr",
- "version_check",
-]
-
-[[package]]
 name = "normpath"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -873,13 +863,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "p4-cmd"
+name = "p4rs"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86b7722324e66ed2374b33369169237726bf7ced1d8631431249e547be1fa23e"
 dependencies = [
  "chrono",
- "nom",
+ "derive_setters",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "test-log",
+ "thiserror",
 ]
 
 [[package]]
@@ -935,17 +930,11 @@ name = "prgit"
 version = "0.1.0"
 dependencies = [
  "cargo-llvm-cov",
- "chrono",
- "derive_setters",
  "env_logger",
  "git2",
  "log",
- "p4-cmd",
- "serde",
- "serde_json",
- "serde_with",
+ "p4rs",
  "test-log",
- "thiserror",
 ]
 
 [[package]]
@@ -1501,12 +1490,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "version_check"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
 
 [[package]]
 name = "walkdir"

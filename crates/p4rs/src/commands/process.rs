@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Output, Stdio};
-use crate::perforce::error::P4Error;
+use crate::error::P4Error;
 
 #[derive(Debug)]
 pub(crate) enum CmdType {

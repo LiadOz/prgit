@@ -1,10 +1,10 @@
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use derive_setters::Setters;
-use crate::perforce::p4::P4;
-use crate::perforce::error::P4Error;
-use crate::perforce::commands::command::{P4Command, CmdType};
-use crate::perforce::commands::change::ChangeType;
+use crate::p4::P4;
+use crate::error::P4Error;
+use crate::commands::process::{P4Command, CmdType};
+use crate::commands::change::ChangeType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,4 +88,3 @@ pub struct OpenedFile {
     pub user: String,
     pub client: String,
 }
-
