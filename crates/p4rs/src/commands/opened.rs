@@ -1,48 +1,13 @@
 use crate::commands::change::ChangeType;
 use crate::commands::process::{CmdType, P4Command};
+use crate::commands::types::{deserialize_optional_rev, FileAction};
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
-fn deserialize_have_rev<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    if s == "none" {
-        Ok(None)
-    } else {
-        s.parse().map(Some).map_err(serde::de::Error::custom)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum OpenAction {
-    Edit,
-    Add,
-    Delete,
-    Branch,
-    Integrate,
-    MoveAdd,
-    MoveDelete,
-}
-
-impl std::fmt::Display for OpenAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpenAction::Edit => write!(f, "edit"),
-            OpenAction::Add => write!(f, "add"),
-            OpenAction::Delete => write!(f, "delete"),
-            OpenAction::Branch => write!(f, "branch"),
-            OpenAction::Integrate => write!(f, "integrate"),
-            OpenAction::MoveAdd => write!(f, "move/add"),
-            OpenAction::MoveDelete => write!(f, "move/delete"),
-        }
-    }
-}
+pub type OpenAction = FileAction;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -98,7 +63,7 @@ pub struct OpenedFile {
     pub client_file: String,
     #[serde_as(as = "DisplayFromStr")]
     pub rev: usize,
-    #[serde(deserialize_with = "deserialize_have_rev")]
+    #[serde(deserialize_with = "deserialize_optional_rev")]
     pub have_rev: Option<usize>,
     pub action: OpenAction,
     #[serde_as(as = "DisplayFromStr")]
@@ -109,18 +74,3 @@ pub struct OpenedFile {
     pub client: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_open_action_display() {
-        assert_eq!(OpenAction::Edit.to_string(), "edit");
-        assert_eq!(OpenAction::Add.to_string(), "add");
-        assert_eq!(OpenAction::Delete.to_string(), "delete");
-        assert_eq!(OpenAction::Branch.to_string(), "branch");
-        assert_eq!(OpenAction::Integrate.to_string(), "integrate");
-        assert_eq!(OpenAction::MoveAdd.to_string(), "move/add");
-        assert_eq!(OpenAction::MoveDelete.to_string(), "move/delete");
-    }
-}

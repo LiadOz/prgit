@@ -53,6 +53,44 @@ where
     v.into_iter().map(|(_, v)| v).collect()
 }
 
+pub struct NumberedFields<'a> {
+    map: &'a HashMap<String, String>,
+}
+
+impl<'a> NumberedFields<'a> {
+    pub fn new(map: &'a HashMap<String, String>) -> Self {
+        Self { map }
+    }
+
+    pub fn at(&self, index: usize) -> IndexedField<'_> {
+        IndexedField { map: self.map, index }
+    }
+
+    pub fn map_each<T, F>(&self, primary_prefix: &str, f: F) -> Vec<T>
+    where
+        F: Fn(IndexedField<'_>) -> T,
+    {
+        (0..)
+            .take_while(|i| self.map.contains_key(&format!("{}{}", primary_prefix, i)))
+            .map(|i| f(self.at(i)))
+            .collect()
+    }
+}
+
+pub struct IndexedField<'a> {
+    map: &'a HashMap<String, String>,
+    index: usize,
+}
+
+impl<'a> IndexedField<'a> {
+    pub fn get<T: std::str::FromStr>(&self, prefix: &str) -> Option<T> {
+        self.map
+            .get(&format!("{}{}", prefix, self.index))?
+            .parse()
+            .ok()
+    }
+}
+
 pub fn deserialize_p4_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -61,6 +99,44 @@ where
     NaiveDateTime::parse_from_str(&s, "%Y/%m/%d %H:%M:%S")
         .map(|dt| dt.and_utc())
         .map_err(serde::de::Error::custom)
+}
+
+pub fn deserialize_unix_timestamp<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    let ts: i64 = s.parse().map_err(serde::de::Error::custom)?;
+    DateTime::from_timestamp(ts, 0)
+        .ok_or_else(|| serde::de::Error::custom("invalid timestamp"))
+}
+
+pub fn deserialize_optional_rev<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s == "none" {
+        Ok(None)
+    } else {
+        s.parse().map(Some).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChangeListType {
+    Public,
+    Restricted,
+}
+
+impl std::fmt::Display for ChangeListType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangeListType::Public => write!(f, "public"),
+            ChangeListType::Restricted => write!(f, "restricted"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -209,6 +285,51 @@ impl std::fmt::Display for ChangeStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileAction {
+    Add,
+    Edit,
+    Delete,
+    Branch,
+    Integrate,
+    #[serde(rename = "move/add")]
+    MoveAdd,
+    #[serde(rename = "move/delete")]
+    MoveDelete,
+}
+
+impl std::fmt::Display for FileAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            FileAction::Add => "add",
+            FileAction::Edit => "edit",
+            FileAction::Delete => "delete",
+            FileAction::Branch => "branch",
+            FileAction::Integrate => "integrate",
+            FileAction::MoveAdd => "move/add",
+            FileAction::MoveDelete => "move/delete",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::str::FromStr for FileAction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "add" => Ok(FileAction::Add),
+            "edit" => Ok(FileAction::Edit),
+            "delete" => Ok(FileAction::Delete),
+            "branch" => Ok(FileAction::Branch),
+            "integrate" => Ok(FileAction::Integrate),
+            "move/add" => Ok(FileAction::MoveAdd),
+            "move/delete" => Ok(FileAction::MoveDelete),
+            _ => Err(format!("unknown action: {}", s)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,6 +372,26 @@ mod tests {
         assert_eq!(ChangeStatus::Pending.to_string(), "pending");
         assert_eq!(ChangeStatus::Submitted.to_string(), "submitted");
         assert_eq!(ChangeStatus::Shelved.to_string(), "shelved");
+    }
+
+    #[test]
+    fn test_file_action_display() {
+        assert_eq!(FileAction::Add.to_string(), "add");
+        assert_eq!(FileAction::Edit.to_string(), "edit");
+        assert_eq!(FileAction::Delete.to_string(), "delete");
+        assert_eq!(FileAction::Branch.to_string(), "branch");
+        assert_eq!(FileAction::Integrate.to_string(), "integrate");
+        assert_eq!(FileAction::MoveAdd.to_string(), "move/add");
+        assert_eq!(FileAction::MoveDelete.to_string(), "move/delete");
+    }
+
+    #[test]
+    fn test_file_action_from_str() {
+        assert_eq!("add".parse::<FileAction>().unwrap(), FileAction::Add);
+        assert_eq!("edit".parse::<FileAction>().unwrap(), FileAction::Edit);
+        assert_eq!("delete".parse::<FileAction>().unwrap(), FileAction::Delete);
+        assert_eq!("move/add".parse::<FileAction>().unwrap(), FileAction::MoveAdd);
+        assert_eq!("move/delete".parse::<FileAction>().unwrap(), FileAction::MoveDelete);
     }
 
     #[test]
@@ -307,5 +448,46 @@ mod tests {
         map.insert("Num2".to_string(), "7".to_string());
         let result: Vec<usize> = extract_numbered(&map, "Num");
         assert_eq!(result, vec![42, 7]);
+    }
+
+    #[test]
+    fn test_numbered_fields_map_each() {
+        let mut map = HashMap::new();
+        map.insert("file0".to_string(), "a.txt".to_string());
+        map.insert("rev0".to_string(), "1".to_string());
+        map.insert("file1".to_string(), "b.txt".to_string());
+        map.insert("rev1".to_string(), "2".to_string());
+
+        let fields = NumberedFields::new(&map);
+        let results: Vec<(String, usize)> = fields.map_each("file", |f| {
+            (f.get("file").unwrap(), f.get("rev").unwrap())
+        });
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], ("a.txt".to_string(), 1));
+        assert_eq!(results[1], ("b.txt".to_string(), 2));
+    }
+
+    #[test]
+    fn test_numbered_fields_map_each_empty() {
+        let map: HashMap<String, String> = HashMap::new();
+        let fields = NumberedFields::new(&map);
+        let results: Vec<String> = fields.map_each("file", |f| f.get("file").unwrap_or_default());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_indexed_field_get_optional() {
+        let mut map = HashMap::new();
+        map.insert("name0".to_string(), "test".to_string());
+
+        let fields = NumberedFields::new(&map);
+        let result: Vec<(String, Option<usize>)> = fields.map_each("name", |f| {
+            (f.get("name").unwrap(), f.get("size"))
+        });
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "test");
+        assert_eq!(result[0].1, None);
     }
 }

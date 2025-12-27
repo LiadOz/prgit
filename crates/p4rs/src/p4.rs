@@ -1,9 +1,10 @@
 use crate::commands::change::Change;
 use crate::commands::client::Client;
 use crate::commands::process::{CmdType, P4Process};
+use crate::commands::shelve::Shelve;
 use crate::commands::{
-    AddCommand, ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand,
-    SubmitCommand,
+    AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, InfoCommand,
+    OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
 };
 use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
@@ -209,12 +210,20 @@ impl P4 {
         ChangesCommand::new(self, files)
     }
 
+    pub fn describe(&self, changelists: &[usize]) -> DescribeCommand<'_> {
+        DescribeCommand::new(self, changelists)
+    }
+
     pub fn change(&self) -> Change<'_> {
         Change::new(self)
     }
 
     pub fn add<'p, 'f>(&'p self, files: &'f [&'f str]) -> AddCommand<'p, 'f> {
         AddCommand::new(self, files)
+    }
+
+    pub fn delete<'p, 'f>(&'p self, files: &'f [&'f str]) -> DeleteCommand<'p, 'f> {
+        DeleteCommand::new(self, files)
     }
 
     pub fn edit<'p, 'f>(&'p self, files: &'f [&'f str]) -> EditCommand<'p, 'f> {
@@ -229,12 +238,20 @@ impl P4 {
         RevertCommand::new(self, files)
     }
 
+    pub fn reopen<'p, 'f>(&'p self, files: &'f [&'f str]) -> ReopenCommand<'p, 'f> {
+        ReopenCommand::new(self, files)
+    }
+
     pub fn submit(&self, changelist: usize) -> SubmitCommand<'_> {
         SubmitCommand::new(self, changelist)
     }
 
     pub fn client(&self) -> Client<'_> {
         Client::new(self)
+    }
+
+    pub fn shelve(&self) -> Shelve<'_> {
+        Shelve::new(self)
     }
 }
 

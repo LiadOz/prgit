@@ -13,9 +13,13 @@ pub use commands::client::{ClientMapping, ClientSpec};
 pub use commands::edit::{EditAction, EditResult};
 pub use commands::info::InfoResponse;
 pub use commands::opened::{OpenAction, OpenedFile};
+pub use commands::delete::DeleteResult;
+pub use commands::describe::{DescribeFile, DescribeResult};
+pub use commands::reopen::ReopenResult;
 pub use commands::revert::RevertResult;
+pub use commands::shelve::ShelveResult;
 
-pub use commands::types::{BaseFileType, ChangeStatus, FileType};
+pub use commands::types::{BaseFileType, ChangeListType, ChangeStatus, FileAction, FileType};
 
 #[cfg(feature = "extensible")]
 pub mod extensible {

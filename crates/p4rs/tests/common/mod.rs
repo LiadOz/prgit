@@ -76,7 +76,7 @@ impl Drop for TestClient {
 #[allow(dead_code)]
 enum ContainerMode {
     External(u16),
-    Managed(testcontainers::Container<GenericImage>),
+    Managed(Box<testcontainers::Container<GenericImage>>),
 }
 
 pub struct P4Server {
@@ -87,7 +87,9 @@ pub struct P4Server {
 impl P4Server {
     pub fn start() -> Self {
         if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
-            let port = port_str.parse().expect("P4RS_TEST_PORT must be a valid port number");
+            let port = port_str
+                .parse()
+                .expect("P4RS_TEST_PORT must be a valid port number");
             log::info!("Using external P4 server on port {}", port);
             return Self {
                 port,
@@ -104,7 +106,7 @@ impl P4Server {
         let port = container.get_host_port_ipv4(1666).unwrap();
         Self {
             port,
-            _container: ContainerMode::Managed(container),
+            _container: ContainerMode::Managed(Box::new(container)),
         }
     }
 
