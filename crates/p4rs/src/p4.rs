@@ -1,4 +1,4 @@
-use crate::commands::change::{ChangeCommand, ChangeSpec};
+use crate::commands::change::Change;
 use crate::commands::client::{ClientCommand, ClientSpec};
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::{ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand};
@@ -194,15 +194,8 @@ impl P4 {
         ChangesCommand::new(self, files)
     }
 
-    pub fn set_change<'p, 's>(
-        &'p self,
-        change_spec: &'s ChangeSpec,
-    ) -> ChangeCommand<'p, &'s ChangeSpec> {
-        ChangeCommand::new(self, change_spec)
-    }
-
-    pub fn change<'p>(&'p self, change: usize) -> ChangeCommand<'p, usize> {
-        ChangeCommand::<'p, usize>::new(self, change)
+    pub fn change(&self) -> Change<'_> {
+        Change::new(self)
     }
 
     pub fn edit<'p, 'f>(&'p self, files: &'f [&'f str]) -> EditCommand<'p, 'f> {

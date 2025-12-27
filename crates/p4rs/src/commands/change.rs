@@ -1,5 +1,5 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
-use crate::commands::types::{deserialize_p4_date, ChangeStatus, FilesPrefix, NumberedVec};
+use crate::commands::types::{deserialize_p4_date, ChangeStatus, FilesPrefix, GenericResponse, NumberedVec};
 use crate::error::P4Error;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
@@ -7,22 +7,56 @@ use derive_setters::Setters;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 
+pub struct SetChange<'s> {
+    change_spec: &'s ChangeSpec,
+}
+
+pub struct GetChange {
+    change_number: Option<usize>,
+}
+
+pub struct DeleteChange {
+    change_number: usize,
+}
+
+pub struct Change<'p> {
+    p4: &'p P4,
+}
+
+impl<'p> Change<'p> {
+    pub fn new(p4: &'p P4) -> Self {
+        Self { p4 }
+    }
+
+    pub fn get(&self, change_number: Option<usize>) -> ChangeCommand<'p, GetChange> {
+        ChangeCommand::new(self.p4, GetChange { change_number })
+    }
+
+    pub fn set<'s>(&self, change_spec: &'s ChangeSpec) -> ChangeCommand<'p, SetChange<'s>> {
+        ChangeCommand::new(self.p4, SetChange { change_spec })
+    }
+
+    pub fn delete(&self, change_number: usize) -> ChangeCommand<'p, DeleteChange> {
+        ChangeCommand::new(self.p4, DeleteChange { change_number })
+    }
+}
+
 #[derive(Setters)]
 #[setters(into, strip_option)]
 pub struct ChangeCommand<'p, T> {
     #[setters(skip)]
     p4: &'p P4,
     #[setters(skip)]
-    data: T,
+    command_specific: T,
     #[setters(bool)]
     force: bool,
 }
 
 impl<'p, T> ChangeCommand<'p, T> {
-    pub fn new(p4: &'p P4, data: T) -> Self {
+    pub fn new(p4: &'p P4, command_specific: T) -> Self {
         Self {
             p4,
-            data,
+            command_specific,
             force: false,
         }
     }
@@ -34,21 +68,27 @@ impl<'p, T> ChangeCommand<'p, T> {
     }
 }
 
-impl<'p> P4Command for ChangeCommand<'p, usize> {
+impl<'p> P4Command for ChangeCommand<'p, GetChange> {
     type Response = ChangeSpec;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.build_process(CmdType::FormOutput);
-        process.arg(self.data.to_string());
+        match self.command_specific.change_number {
+            Some(change_number) => {
+                process.arg(change_number.to_string());
+            }
+            None => {
+            }
+        }
         let json = self.p4.run(process)?;
         Ok(serde_json::from_value(json)?)
     }
 }
 
-impl<'p, 's> P4Command for ChangeCommand<'p, &'s ChangeSpec> {
+impl<'p, 's> P4Command for ChangeCommand<'p, SetChange<'s>> {
     type Response = usize;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let process = self.build_process(CmdType::FormInput);
-        let stdin_data = self.data.to_string();
+        let stdin_data = self.command_specific.change_spec.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
         let result = String::from_utf8_lossy(&output.stdout);
         let change: usize = result
@@ -61,6 +101,22 @@ impl<'p, 's> P4Command for ChangeCommand<'p, &'s ChangeSpec> {
             .parse()
             .map_err(|_| P4Error::UnexpectedError(format!("unexpected output: {}", result)))?;
         Ok(change)
+    }
+}
+
+impl<'p> P4Command for ChangeCommand<'p, DeleteChange> {
+    type Response = GenericResponse;
+    fn run(&self) -> Result<Self::Response, P4Error> {
+        let mut process = self.build_process(CmdType::Query);
+        process.flag(self.force, "-f");
+        process.arg(self.command_specific.change_number.to_string());
+        let json = self.p4.run(process)?;
+        let response: GenericResponse = serde_json::from_value(json)?;
+        let deleted_re = regex::Regex::new(r"^Change \d+ deleted\.$").expect("invalid regex");
+        if !deleted_re.is_match(response.data.trim()) {
+            return Err(P4Error::CommandSpecificError(response.data));
+        }
+        Ok(response)
     }
 }
 

@@ -3,6 +3,12 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+#[derive(Deserialize, Debug)]
+pub struct GenericResponse {
+    pub data: String,
+    pub level: usize,
+}
+
 /// P4 outputs list fields as numbered keys (e.g. `Files0`, `Files1`, `View0`, `View1`)
 /// instead of arrays. `NumberedVec` deserializes these into a `Vec<T>` transparently.
 ///

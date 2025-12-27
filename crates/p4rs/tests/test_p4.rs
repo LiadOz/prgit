@@ -43,15 +43,36 @@ fn test_change_spec() {
     let p4 = P4::new();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test change");
     let change_number = p4
-        .set_change(&change_spec)
+        .change()
+        .set(&change_spec)
         .run()
         .expect("Failed to set change");
     assert!(change_number > 0);
     let result_spec = p4
-        .change(change_number)
+        .change()
+        .get(Some(change_number))
         .run()
         .expect("Failed to get change");
     assert!(result_spec.description.trim() == change_spec.description.trim());
+}
+
+#[test]
+fn test_change_delete() {
+    let p4 = P4::new();
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Change to delete");
+    let change_number = p4
+        .change()
+        .set(&change_spec)
+        .run()
+        .expect("Failed to create change");
+
+    p4.change()
+        .delete(change_number)
+        .run()
+        .expect("Failed to delete change");
+
+    let result = p4.change().get(Some(change_number)).run();
+    assert!(matches!(result, Err(P4Error::CommandFailed(_))));
 }
 
 #[test]
@@ -96,7 +117,8 @@ fn test_edit_with_changelist() {
 
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit");
     let cl = p4
-        .set_change(&change_spec)
+        .change()
+        .set(&change_spec)
         .run()
         .expect("Failed to set change");
 
@@ -131,11 +153,11 @@ fn test_change_with_multiple_files() {
     p4.revert(&files).run().ok();
 
     let change_spec = ChangeSpec::new(ChangeType::New).description("Multi-file change");
-    let cl = p4.set_change(&change_spec).run().expect("Failed to create change");
+    let cl = p4.change().set(&change_spec).run().expect("Failed to create change");
 
     p4.edit(&files).changelist(cl).run().expect("Failed to edit files");
 
-    let spec = p4.change(cl).run().expect("Failed to get change spec");
+    let spec = p4.change().get(Some(cl)).run().expect("Failed to get change spec");
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
     for f in &files {

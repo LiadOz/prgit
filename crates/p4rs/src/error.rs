@@ -14,6 +14,8 @@ pub enum P4Error {
     UnexpectedError(String),
     #[error("Usage error: {0}")]
     UsageError(String),
+    #[error("Command failed with specific error: {0}")]
+    CommandSpecificError(String),
 }
 
 #[derive(Deserialize, Debug)]
