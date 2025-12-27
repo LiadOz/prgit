@@ -74,3 +74,14 @@ pub struct EditResult {
     #[serde(rename = "type")]
     pub file_type: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_edit_action_display() {
+        assert_eq!(EditAction::Edit.to_string(), "edit");
+        assert_eq!(EditAction::Add.to_string(), "add");
+    }
+}

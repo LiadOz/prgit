@@ -341,3 +341,92 @@ fn test_submit() {
 
     test_client.p4.submit(cl).run().expect("Failed to submit");
 }
+
+#[test]
+fn test_opened_have_rev_after_submit() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("have_rev_test.txt");
+    fs::write(&file_path, "content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
+        .run()
+        .expect("Failed to create change");
+    test_client.p4.add(&[file_str]).changelist(cl).run().expect("Failed to add");
+    test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].have_rev, Some(1));
+
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+}
+
+#[test]
+fn test_revert_unchanged() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("unchanged_test.txt");
+    fs::write(&file_path, "content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
+        .run()
+        .expect("Failed to create change");
+    test_client.p4.add(&[file_str]).changelist(cl).run().expect("Failed to add");
+    test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
+    let reverted = test_client.p4.revert(&["//..."]).unchanged().run().expect("Failed to revert");
+    assert_eq!(reverted.len(), 1);
+}
+
+#[test]
+fn test_connection_failed() {
+    let p4 = p4rs::P4::new().port("localhost:99999");
+    let result = p4.info().run();
+    assert!(matches!(result, Err(P4Error::ConnectionFailed)));
+}
+
+#[test]
+fn test_edit_preview() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("preview_test.txt");
+    fs::write(&file_path, "content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
+        .run()
+        .expect("Failed to create change");
+    test_client.p4.add(&[file_str]).changelist(cl).run().expect("Failed to add");
+    test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    let results = test_client.p4.edit(&[file_str]).preview().run().expect("Failed to preview edit");
+    assert_eq!(results.len(), 1);
+
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    assert!(opened.is_empty());
+}
+
+#[test]
+fn test_add_preview() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("add_preview.txt");
+    fs::write(&file_path, "content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let results = test_client.p4.add(&[file_str]).preview().run().expect("Failed to preview add");
+    assert_eq!(results.len(), 1);
+
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    assert!(opened.is_empty());
+}

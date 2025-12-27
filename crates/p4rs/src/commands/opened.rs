@@ -108,3 +108,19 @@ pub struct OpenedFile {
     pub user: String,
     pub client: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_open_action_display() {
+        assert_eq!(OpenAction::Edit.to_string(), "edit");
+        assert_eq!(OpenAction::Add.to_string(), "add");
+        assert_eq!(OpenAction::Delete.to_string(), "delete");
+        assert_eq!(OpenAction::Branch.to_string(), "branch");
+        assert_eq!(OpenAction::Integrate.to_string(), "integrate");
+        assert_eq!(OpenAction::MoveAdd.to_string(), "move/add");
+        assert_eq!(OpenAction::MoveDelete.to_string(), "move/delete");
+    }
+}
