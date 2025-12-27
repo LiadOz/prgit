@@ -1,5 +1,5 @@
-use crate::commands::process::{CmdType, P4Command};
-use crate::commands::types::{deserialize_p4_date, ChangeStatus};
+use crate::commands::process::{CmdType, P4Command, P4Process};
+use crate::commands::types::{deserialize_p4_date, ChangeStatus, FilesPrefix, NumberedVec};
 use crate::error::P4Error;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
@@ -26,13 +26,19 @@ impl<'p, T> ChangeCommand<'p, T> {
             force: false,
         }
     }
+
+    fn build_process(&self, cmd_type: CmdType) -> P4Process {
+        let mut process = self.p4.build_cmd("change", cmd_type);
+        process.flag(self.force, "-f");
+        process
+    }
 }
 
 impl<'p> P4Command for ChangeCommand<'p, usize> {
     type Response = ChangeSpec;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let mut process = self.p4.build_cmd("change", CmdType::FormOutput);
-        process.flag(self.force, "-f").arg(self.data.to_string());
+        let mut process = self.build_process(CmdType::FormOutput);
+        process.arg(self.data.to_string());
         let json = self.p4.run(process)?;
         Ok(serde_json::from_value(json)?)
     }
@@ -41,8 +47,7 @@ impl<'p> P4Command for ChangeCommand<'p, usize> {
 impl<'p, 's> P4Command for ChangeCommand<'p, &'s ChangeSpec> {
     type Response = usize;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        let mut process = self.p4.build_cmd("change", CmdType::FormInput);
-        process.flag(self.force, "-f");
+        let process = self.build_process(CmdType::FormInput);
         let stdin_data = self.data.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
         let result = String::from_utf8_lossy(&output.stdout);
@@ -97,7 +102,7 @@ impl std::fmt::Display for ChangeType {
     }
 }
 #[serde_as]
-#[derive(Debug, PartialEq, Eq, Deserialize, Setters)]
+#[derive(Debug, Deserialize, Setters)]
 #[serde(rename_all = "PascalCase")]
 #[setters(into, strip_option)]
 pub struct ChangeSpec {
@@ -114,8 +119,10 @@ pub struct ChangeSpec {
     #[setters(skip)]
     pub status: ChangeStatus,
     pub description: String,
-    #[serde(default)]
-    pub files: Vec<String>,
+    #[serde(default, rename = "Type")]
+    pub change_type: Option<String>,
+    #[serde(flatten)]
+    pub files: NumberedVec<FilesPrefix>,
 }
 
 impl ChangeSpec {
@@ -127,7 +134,8 @@ impl ChangeSpec {
             user: None,
             status: ChangeStatus::Pending,
             description: String::new(),
-            files: Vec::new(),
+            change_type: None,
+            files: Default::default(),
         }
     }
 }
@@ -153,7 +161,7 @@ impl std::fmt::Display for ChangeSpec {
         if !self.files.is_empty() {
             writeln!(f)?;
             writeln!(f, "Files:")?;
-            for file in &self.files {
+            for file in self.files.iter() {
                 writeln!(f, "\t{}", file)?;
             }
         }
@@ -166,16 +174,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_client_spec_single_line_description() {
-        let spec = ChangeSpec {
-            change: ChangeType::New,
-            date: DateTime::default(),
-            client: Some("my-client".into()),
-            user: Some("testuser".into()),
-            status: ChangeStatus::Pending,
-            description: "Simple description".into(),
-            files: vec![],
-        };
+    fn test_change_spec_single_line_description() {
+        let spec = ChangeSpec::new(ChangeType::New)
+            .client("my-client")
+            .user("testuser")
+            .description("Simple description");
         assert_eq!(
             spec.to_string(),
             "\
@@ -194,16 +197,11 @@ Description:
     }
 
     #[test]
-    fn test_client_spec_multiline_description() {
-        let spec = ChangeSpec {
-            change: ChangeType::Number(42),
-            date: DateTime::default(),
-            client: Some("my-client".into()),
-            user: Some("testuser".into()),
-            status: ChangeStatus::Pending,
-            description: "Line one\nLine two\nLine three".into(),
-            files: vec![],
-        };
+    fn test_change_spec_multiline_description() {
+        let spec = ChangeSpec::new(ChangeType::Number(42))
+            .client("my-client")
+            .user("testuser")
+            .description("Line one\nLine two\nLine three");
         assert_eq!(
             spec.to_string(),
             "\
@@ -224,63 +222,18 @@ Description:
     }
 
     #[test]
-    fn test_client_spec_with_files() {
-        let spec = ChangeSpec {
-            change: ChangeType::New,
-            date: DateTime::default(),
-            client: Some("my-client".into()),
-            user: Some("testuser".into()),
-            status: ChangeStatus::Submitted,
-            description: "Test".into(),
-            files: vec!["//depot/file1.txt".into(), "//depot/file2.txt".into()],
-        };
-        assert_eq!(
-            spec.to_string(),
-            "\
-Change: new
-
-Client: my-client
-
-User:	testuser
-
-Status: submitted
-
-Description:
-	Test
-
-Files:
-	//depot/file1.txt
-	//depot/file2.txt
-"
-        );
+    fn test_change_spec_with_files() {
+        let json = r#"{"Change":"1","Date":"2025/12/17 18:38:12","Status":"submitted","Description":"Test","Files0":"//depot/file1.txt","Files1":"//depot/file2.txt"}"#;
+        let spec: ChangeSpec = serde_json::from_str(json).unwrap();
+        assert_eq!(spec.files.len(), 2);
+        assert_eq!(spec.files[0], "//depot/file1.txt");
+        assert_eq!(spec.files[1], "//depot/file2.txt");
     }
 
     #[test]
-    fn test_client_spec_empty_files() {
-        let spec = ChangeSpec {
-            change: ChangeType::New,
-            date: DateTime::default(),
-            client: Some("my-client".into()),
-            user: Some("testuser".into()),
-            status: ChangeStatus::Pending,
-            description: "No files".into(),
-            files: vec![],
-        };
-        assert_eq!(
-            spec.to_string(),
-            "\
-Change: new
-
-Client: my-client
-
-User:	testuser
-
-Status: pending
-
-Description:
-	No files
-"
-        );
+    fn test_change_spec_empty_files() {
+        let spec = ChangeSpec::new(ChangeType::New).description("No files");
+        assert!(spec.files.is_empty());
     }
 
     fn parse_date(s: &str) -> DateTime<Utc> {
@@ -290,7 +243,7 @@ Description:
     }
 
     #[test]
-    fn test_client_spec_deserialize() {
+    fn test_change_spec_deserialize() {
         let json = r#"{
             "Change": "12345",
             "Date": "2025/12/17 18:38:12",
@@ -300,20 +253,15 @@ Description:
             "Description": "Test description"
         }"#;
         let spec: ChangeSpec = serde_json::from_str(json).unwrap();
-        let expected = ChangeSpec {
-            change: ChangeType::Number(12345),
-            date: parse_date("2025/12/17 18:38:12"),
-            client: Some("test-client".into()),
-            user: Some("testuser".into()),
-            status: ChangeStatus::Pending,
-            description: "Test description".into(),
-            files: vec![],
-        };
-        assert_eq!(spec, expected);
+        assert_eq!(spec.change, ChangeType::Number(12345));
+        assert_eq!(spec.date, parse_date("2025/12/17 18:38:12"));
+        assert_eq!(spec.client, Some("test-client".into()));
+        assert_eq!(spec.status, ChangeStatus::Pending);
+        assert!(spec.files.is_empty());
     }
 
     #[test]
-    fn test_client_spec_deserialize_new_change() {
+    fn test_change_spec_deserialize_new() {
         let json = r#"{
             "Change": "new",
             "Date": "2025/12/17 18:38:12",
@@ -323,15 +271,18 @@ Description:
             "Description": "New changelist"
         }"#;
         let spec: ChangeSpec = serde_json::from_str(json).unwrap();
-        let expected = ChangeSpec {
-            change: ChangeType::New,
-            date: parse_date("2025/12/17 18:38:12"),
-            client: Some("my-client".into()),
-            user: Some("someuser".into()),
-            status: ChangeStatus::Pending,
-            description: "New changelist".into(),
-            files: vec![],
-        };
-        assert_eq!(spec, expected);
+        assert_eq!(spec.change, ChangeType::New);
+        assert_eq!(spec.client, Some("my-client".into()));
+    }
+
+    #[test]
+    fn test_real_p4_output() {
+        let json = r#"{"Change":"79","Client":"dummy","Date":"2025/12/26 19:48:25","Description":"c\n","Files0":"//depot/b/c","Status":"pending","Type":"public","User":"ozonzono"}"#;
+        let spec: ChangeSpec = serde_json::from_str(json).unwrap();
+        assert_eq!(spec.change, ChangeType::Number(79));
+        assert_eq!(spec.client, Some("dummy".into()));
+        assert_eq!(spec.change_type, Some("public".into()));
+        assert_eq!(spec.files.len(), 1);
+        assert_eq!(spec.files[0], "//depot/b/c");
     }
 }

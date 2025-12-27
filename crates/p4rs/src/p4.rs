@@ -1,4 +1,5 @@
 use crate::commands::change::{ChangeCommand, ChangeSpec};
+use crate::commands::client::{ClientCommand, ClientSpec};
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::{ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand};
 use crate::error::{ErrorResponse, P4Error};
@@ -12,7 +13,7 @@ pub struct P4 {
     port: Option<String>,
     user: Option<String>,
     password: Option<String>,
-    client: Option<String>,
+    client_name: Option<String>,
     retries: Option<usize>,
 }
 
@@ -23,7 +24,7 @@ impl P4 {
             port: None,
             user: None,
             password: None,
-            client: None,
+            client_name: None,
             retries: None,
         }
     }
@@ -40,7 +41,7 @@ impl P4 {
 
     fn build_cmd_inner(&self, cmd_name: &str, cmd_type: CmdType) -> P4Process {
         let mut cmd = std::process::Command::new(&self.p4_path);
-        if let Some(client) = &self.client {
+        if let Some(client) = &self.client_name {
             cmd.args(["-c", client]);
         }
         if let Some(port) = &self.port {
@@ -200,7 +201,7 @@ impl P4 {
         ChangeCommand::new(self, change_spec)
     }
 
-    pub fn get_change<'p>(&'p self, change: usize) -> ChangeCommand<'p, usize> {
+    pub fn change<'p>(&'p self, change: usize) -> ChangeCommand<'p, usize> {
         ChangeCommand::<'p, usize>::new(self, change)
     }
 
@@ -214,6 +215,14 @@ impl P4 {
 
     pub fn revert<'p, 'f>(&'p self, files: &'f [&'f str]) -> RevertCommand<'p, 'f> {
         RevertCommand::new(self, files)
+    }
+
+    pub fn set_client<'p, 's>(&'p self, client_spec: &'s ClientSpec) -> ClientCommand<'p, &'s ClientSpec> {
+        ClientCommand::new(self, client_spec)
+    }
+
+    pub fn client<'p>(&'p self, name: Option<&'p str>) -> ClientCommand<'p, Option<&'p str>> {
+        ClientCommand::new(self, name)
     }
 }
 

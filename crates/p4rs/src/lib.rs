@@ -9,6 +9,7 @@ pub use commands::P4Command;
 
 pub use commands::change::{ChangeSpec, ChangeType};
 pub use commands::changes::ChangeData;
+pub use commands::client::{ClientMapping, ClientSpec};
 pub use commands::edit::{EditAction, EditResult};
 pub use commands::info::InfoResponse;
 pub use commands::opened::{OpenAction, OpenedFile};

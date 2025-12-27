@@ -1,5 +1,97 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+
+/// P4 outputs list fields as numbered keys (e.g. `Files0`, `Files1`, `View0`, `View1`)
+/// instead of arrays. `NumberedVec` deserializes these into a `Vec<T>` transparently.
+///
+/// Usage with `#[serde(flatten)]`:
+/// ```ignore
+/// #[derive(Deserialize)]
+/// struct ChangeSpec {
+///     #[serde(flatten)]
+///     pub files: NumberedVec<FilesPrefix>,
+/// }
+/// ```
+///
+/// The type derefs to `Vec<T>`, so it can be used exactly like a vector.
+pub trait Prefix {
+    const VALUE: &'static str;
+}
+
+macro_rules! define_prefix {
+    ($name:ident, $prefix:literal) => {
+        #[derive(Debug, Default)]
+        pub struct $name;
+        impl Prefix for $name {
+            const VALUE: &'static str = $prefix;
+        }
+    };
+}
+
+define_prefix!(FilesPrefix, "Files");
+define_prefix!(ViewPrefix, "View");
+
+#[derive(Debug, Default)]
+pub struct NumberedVec<P: Prefix, T: std::str::FromStr = String>(Vec<T>, PhantomData<P>);
+
+impl<P: Prefix, T: std::str::FromStr> NumberedVec<P, T> {
+    pub fn new(v: Vec<T>) -> Self {
+        Self(v, PhantomData)
+    }
+}
+
+impl<P: Prefix, T: std::str::FromStr> std::ops::Deref for NumberedVec<P, T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<P: Prefix, T: std::str::FromStr> std::ops::DerefMut for NumberedVec<P, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<P: Prefix, T: std::str::FromStr> From<Vec<T>> for NumberedVec<P, T> {
+    fn from(v: Vec<T>) -> Self {
+        Self(v, PhantomData)
+    }
+}
+
+impl<P: Prefix, T: std::str::FromStr + PartialEq> PartialEq<Vec<T>> for NumberedVec<P, T> {
+    fn eq(&self, other: &Vec<T>) -> bool {
+        self.0 == *other
+    }
+}
+
+impl<'de, P: Prefix, T: std::str::FromStr> Deserialize<'de> for NumberedVec<P, T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
+        let mut items: Vec<_> = map
+            .into_iter()
+            .filter_map(|(k, v)| {
+                k.strip_prefix(P::VALUE)?
+                    .parse::<usize>()
+                    .ok()
+                    .map(|i| (i, v))
+            })
+            .collect();
+        items.sort_by_key(|(i, _)| *i);
+        Ok(NumberedVec(
+            items
+                .into_iter()
+                .filter_map(|(_, v)| v.parse().ok())
+                .collect(),
+            PhantomData,
+        ))
+    }
+}
 
 pub fn deserialize_p4_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
@@ -199,5 +291,26 @@ mod tests {
         assert_eq!(ChangeStatus::Pending.to_string(), "pending");
         assert_eq!(ChangeStatus::Submitted.to_string(), "submitted");
         assert_eq!(ChangeStatus::Shelved.to_string(), "shelved");
+    }
+
+    define_prefix!(TestPrefix, "Num");
+
+    #[test]
+    fn test_numbered_vec_with_usize() {
+        let json = r#"{"Num0": "42", "Num1": "100", "Num2": "7"}"#;
+        let nv: NumberedVec<TestPrefix, usize> = serde_json::from_str(json).unwrap();
+        assert_eq!(nv.len(), 3);
+        assert_eq!(nv[0], 42);
+        assert_eq!(nv[1], 100);
+        assert_eq!(nv[2], 7);
+    }
+
+    #[test]
+    fn test_numbered_vec_with_strings() {
+        let json = r#"{"Files0": "a.txt", "Files1": "b.txt"}"#;
+        let nv: NumberedVec<FilesPrefix> = serde_json::from_str(json).unwrap();
+        assert_eq!(nv.len(), 2);
+        assert_eq!(nv[0], "a.txt");
+        assert_eq!(nv[1], "b.txt");
     }
 }

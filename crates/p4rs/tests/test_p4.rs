@@ -1,5 +1,7 @@
 use p4rs::extensible::CmdType;
-use p4rs::{ChangeSpec, ChangeStatus, ChangeType, EditAction, OpenAction, P4Command, P4Error, P4};
+use p4rs::{ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction, P4Command, P4Error, P4};
+use tempfile::TempDir;
+use test_log::test;
 
 #[test]
 fn test_invalid_command_returns_json_error() {
@@ -39,14 +41,14 @@ fn test_changes() {
 #[test]
 fn test_change_spec() {
     let p4 = P4::new();
-    let change_spec = ChangeSpec::new(ChangeType::New).description("Test change".to_string());
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Test change");
     let change_number = p4
         .set_change(&change_spec)
         .run()
         .expect("Failed to set change");
     assert!(change_number > 0);
     let result_spec = p4
-        .get_change(change_number)
+        .change(change_number)
         .run()
         .expect("Failed to get change");
     assert!(result_spec.description.trim() == change_spec.description.trim());
@@ -92,7 +94,7 @@ fn test_edit_with_changelist() {
 
     p4.revert(&[test_file]).run().ok();
 
-    let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit".to_string());
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit");
     let cl = p4
         .set_change(&change_spec)
         .run()
@@ -117,3 +119,40 @@ fn test_edit_with_changelist() {
         .run()
         .expect("Failed to revert file");
 }
+
+#[test]
+fn test_change_with_multiple_files() {
+    let p4 = P4::new();
+    let files = [
+        "//depot/testing/test_file",
+        "//depot/testing/another_file",
+    ];
+
+    p4.revert(&files).run().ok();
+
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Multi-file change");
+    let cl = p4.set_change(&change_spec).run().expect("Failed to create change");
+
+    p4.edit(&files).changelist(cl).run().expect("Failed to edit files");
+
+    let spec = p4.change(cl).run().expect("Failed to get change spec");
+    assert_eq!(spec.description.trim(), "Multi-file change");
+    assert_eq!(spec.files.len(), 2);
+    for f in &files {
+        assert!(spec.files.iter().any(|sf| sf.contains(*f)));
+    }
+
+    p4.revert(&files).run().expect("Failed to revert files");
+}
+
+//#[test]
+//fn test_create_client() {
+//    let p4 = P4::new();
+//    let tmp_dir = TempDir::new().unwrap();
+//    let client_spec = ClientSpec::new_with_default_mapping("my-client", tmp_dir.path().to_str().unwrap(), "//depot/...");
+//    let client_name = p4.set_client(&client_spec).run().expect("Failed to create client");
+//    assert!(!client_name.is_empty());
+//    let result_spec = p4.client(Some(&client_name)).run().expect("Failed to get client spec");
+//    assert_eq!(result_spec.client, "my-client");
+//    assert_eq!(result_spec.view, vec![ClientMapping::new("//depot/...", "//my-client/...")]);
+//}

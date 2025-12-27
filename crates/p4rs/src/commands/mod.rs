@@ -1,5 +1,6 @@
 pub mod change;
 pub mod changes;
+pub mod client;
 pub mod edit;
 pub mod info;
 pub mod opened;
