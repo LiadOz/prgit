@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Output, Stdio};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CmdType {
     FormInput,
     FormOutput,

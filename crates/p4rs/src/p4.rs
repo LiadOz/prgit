@@ -121,12 +121,18 @@ impl P4 {
                 CmdType::FormInput => {
                     return Err(P4Error::CommandFailed(
                         String::from_utf8_lossy(&output.stderr).into_owned(),
+                        3,
                     ));
                 }
                 _ => {
                     let error_response: ErrorResponse = serde_json::from_slice(&output.stdout)?;
-                    return Err(P4Error::CommandFailed(error_response.data));
+                    return Err(P4Error::CommandFailed(error_response.data, error_response.severity));
                 }
+            }
+        }
+        if p4_process.cmd_type != CmdType::FormInput {
+            if let Ok(error_response) = serde_json::from_slice::<ErrorResponse>(&output.stdout) {
+                return Err(P4Error::CommandSpecificError(error_response.data, error_response.severity));
             }
         }
         Ok(output)

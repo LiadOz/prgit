@@ -20,7 +20,8 @@ extensible = []
 [dev-dependencies]
 env_logger = "0.11.8"
 test-log = "0.2.19"
-testcontainers = "0.23"
+testcontainers = { version = "0.23", features = ["blocking"] }
 p4rs = { path = ".", features = ["extensible"] }
 tempfile = "3.24.0"
+uuid = { version = "1", features = ["v4"] }
 

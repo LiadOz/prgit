@@ -33,7 +33,7 @@ impl<'p> P4Command for InfoCommand<'p> {
 #[serde(rename_all = "camelCase")]
 pub struct InfoResponse {
     #[serde(rename = "ServerID")]
-    pub server_id: String,
+    pub server_id: Option<String>,
     pub client_name: String,
     pub client_root: Option<String>,
     pub client_cwd: String,

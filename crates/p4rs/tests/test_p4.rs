@@ -1,14 +1,16 @@
 use p4rs::extensible::CmdType;
 use p4rs::{
-    ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction,
+    ChangeSpec, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction,
     P4Command, P4Error, P4,
 };
+mod common;
+use common::SERVER;
 use tempfile::TempDir;
 use test_log::test;
 
 #[test]
 fn test_invalid_command_returns_json_error() {
-    let p4 = P4::new();
+    let p4 = SERVER.p4();
     assert!(matches!(
         p4.run(p4.build_cmd("-h", CmdType::Query)),
         Err(P4Error::JsonError(_))
@@ -17,41 +19,41 @@ fn test_invalid_command_returns_json_error() {
 
 #[test]
 fn test_unknown_command_returns_command_failed() {
-    let p4 = P4::new();
+    let p4 = SERVER.p4();
     assert!(matches!(
         p4.run(p4.build_cmd("inf", CmdType::Query)),
-        Err(P4Error::CommandFailed(ref error)) if error.starts_with("Unknown command")
+        Err(P4Error::CommandFailed(ref error, severity)) if error.starts_with("Unknown command") && severity == 3
     ));
 }
 
 #[test]
 fn test_info() {
-    let p4 = P4::new();
+    let p4 = SERVER.p4();
     let info = p4.info().short().run().expect("Failed to get info");
-    assert!(!info.server_id.is_empty());
     assert!(!info.user_name.is_empty());
 }
 
 #[test]
 fn test_changes() {
-    let p4 = P4::new();
-    let changes = p4.changes(&[]).long().run().expect("Failed to get changes");
+    let test_client = SERVER.test_client();
+    test_client.p4.change().set(&ChangeSpec::new(ChangeType::New).description("Test change")).run().expect("Failed to create change");
+    test_client.p4.change().set(&ChangeSpec::new(ChangeType::New).description("Test change 2")).run().expect("Failed to create change");
+    let changes = test_client.p4.changes(&[]).long().run().expect("Failed to get changes");
     assert!(!changes.is_empty());
-    assert!(changes.len() >= 3);
-    assert!(changes.last().expect("No changes found").status == ChangeStatus::Submitted);
+    assert!(changes.len() == 2);
 }
 
 #[test]
 fn test_change_spec() {
-    let p4 = P4::new();
+    let test_client = SERVER.test_client();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test change");
-    let change_number = p4
+    let change_number = test_client.p4
         .change()
         .set(&change_spec)
         .run()
         .expect("Failed to set change");
     assert!(change_number > 0);
-    let result_spec = p4
+    let result_spec = test_client.p4
         .change()
         .get(Some(change_number))
         .run()
@@ -61,21 +63,21 @@ fn test_change_spec() {
 
 #[test]
 fn test_change_delete() {
-    let p4 = P4::new();
+    let test_client = SERVER.test_client();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Change to delete");
-    let change_number = p4
+    let change_number = test_client.p4
         .change()
         .set(&change_spec)
         .run()
         .expect("Failed to create change");
 
-    p4.change()
+    test_client.p4.change()
         .delete(change_number)
         .run()
         .expect("Failed to delete change");
 
-    let result = p4.change().get(Some(change_number)).run();
-    assert!(matches!(result, Err(P4Error::CommandFailed(_))));
+    let result = test_client.p4.change().get(Some(change_number)).run();
+    assert!(matches!(result, Err(P4Error::CommandFailed(_, severity)) if severity == 3));
 }
 
 #[test]
@@ -180,7 +182,7 @@ fn test_change_with_multiple_files() {
 
 #[test]
 fn test_create_client() {
-    let p4 = P4::new();
+    let p4 = SERVER.p4();
     let tmp_dir = TempDir::new().expect("Failed to create temp dir");
     let client_spec = ClientSpec::new_with_default_mapping(
         "my-client",
