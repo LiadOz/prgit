@@ -1,5 +1,5 @@
 use crate::commands::change::Change;
-use crate::commands::client::{ClientCommand, ClientSpec};
+use crate::commands::client::Client;
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::{ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand};
 use crate::error::{ErrorResponse, P4Error};
@@ -210,12 +210,8 @@ impl P4 {
         RevertCommand::new(self, files)
     }
 
-    pub fn set_client<'p, 's>(&'p self, client_spec: &'s ClientSpec) -> ClientCommand<'p, &'s ClientSpec> {
-        ClientCommand::new(self, client_spec)
-    }
-
-    pub fn client<'p>(&'p self, name: Option<&'p str>) -> ClientCommand<'p, Option<&'p str>> {
-        ClientCommand::new(self, name)
+    pub fn client(&self) -> Client<'_> {
+        Client::new(self)
     }
 }
 

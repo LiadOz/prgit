@@ -1,5 +1,7 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
-use crate::commands::types::{deserialize_p4_date, extract_numbered, ChangeStatus, GenericResponse};
+use crate::commands::types::{
+    deserialize_p4_date, extract_numbered, ChangeStatus, GenericResponse,
+};
 use crate::error::P4Error;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
@@ -107,6 +109,7 @@ impl<'p> P4Command for ChangeCommand<'p, DeleteChange> {
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.build_process(CmdType::Query);
         process.flag(self.force, "-f");
+        process.arg("-d");
         process.arg(self.command_specific.change_number.to_string());
         let json = self.p4.run(process)?;
         let response: GenericResponse = serde_json::from_value(json)?;

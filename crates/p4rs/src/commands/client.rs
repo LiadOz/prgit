@@ -1,10 +1,44 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
-use crate::commands::types::extract_numbered;
+use crate::commands::types::{extract_numbered, GenericResponse};
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
 use std::collections::HashMap;
+
+pub struct SetClient<'s> {
+    client_spec: &'s ClientSpec,
+}
+
+pub struct GetClient<'s> {
+    client_name: Option<&'s str>,
+}
+
+pub struct DeleteClient<'s> {
+    client_name: &'s str,
+}
+
+pub struct Client<'p> {
+    p4: &'p P4,
+}
+
+impl<'p> Client<'p> {
+    pub fn new(p4: &'p P4) -> Self {
+        Self { p4 }
+    }
+
+    pub fn get<'s>(&self, client_name: Option<&'s str>) -> ClientCommand<'p, GetClient<'s>> {
+        ClientCommand::new(self.p4, GetClient { client_name })
+    }
+
+    pub fn set<'s>(&self, client_spec: &'s ClientSpec) -> ClientCommand<'p, SetClient<'s>> {
+        ClientCommand::new(self.p4, SetClient { client_spec })
+    }
+
+    pub fn delete<'s>(&self, client_name: &'s str) -> ClientCommand<'p, DeleteClient<'s>> {
+        ClientCommand::new(self.p4, DeleteClient { client_name })
+    }
+}
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -12,48 +46,32 @@ pub struct ClientCommand<'p, T> {
     #[setters(skip)]
     p4: &'p P4,
     #[setters(skip)]
-    data: T,
+    command_specific: T,
     #[setters(bool)]
     force: bool,
-    #[setters(bool)]
-    delete: bool,
 }
 
 impl<'p, T> ClientCommand<'p, T> {
-    pub fn new(p4: &'p P4, data: T) -> Self {
+    pub fn new(p4: &'p P4, command_specific: T) -> Self {
         Self {
             p4,
-            data,
+            command_specific,
             force: false,
-            delete: false,
         }
-    }
-
-    fn fail_delete(&self, reason: &str) -> Result<(), P4Error> {
-        if self.delete {
-            return Err(P4Error::UsageError(reason.to_string()));
-        }
-        Ok(())
     }
 
     fn build_process(&self, cmd_type: CmdType) -> P4Process {
         let mut process = self.p4.build_cmd("client", cmd_type);
         process.flag(self.force, "-f");
-        if self.delete {
-            process.arg("-d");
-        }
         process
     }
 }
 
-impl<'p, 's> P4Command for ClientCommand<'p, Option<&'s str>> {
+impl<'p, 's> P4Command for ClientCommand<'p, GetClient<'s>> {
     type Response = ClientSpec;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.build_process(CmdType::FormOutput);
-        if self.delete && self.data.is_none() {
-            self.fail_delete("Cannot get a client without a name")?;
-        }
-        if let Some(name) = self.data {
+        if let Some(name) = self.command_specific.client_name {
             process.arg(name);
         }
         let json = self.p4.run(process)?;
@@ -62,14 +80,11 @@ impl<'p, 's> P4Command for ClientCommand<'p, Option<&'s str>> {
     }
 }
 
-impl<'p, 's> P4Command for ClientCommand<'p, &'s ClientSpec> {
+impl<'p, 's> P4Command for ClientCommand<'p, SetClient<'s>> {
     type Response = String;
     fn run(&self) -> Result<Self::Response, P4Error> {
-        if self.delete {
-            self.fail_delete("Passing delete not allowed creating/modifying a client")?;
-        }
         let process = self.build_process(CmdType::FormInput);
-        let stdin_data = self.data.to_string();
+        let stdin_data = self.command_specific.client_spec.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
         let result = String::from_utf8_lossy(&output.stdout);
         let client_name: String = result
@@ -82,6 +97,23 @@ impl<'p, 's> P4Command for ClientCommand<'p, &'s ClientSpec> {
             .parse()
             .map_err(|_| P4Error::UnexpectedError(format!("unexpected output: {}", result)))?;
         Ok(client_name)
+    }
+}
+
+impl<'p, 's> P4Command for ClientCommand<'p, DeleteClient<'s>> {
+    type Response = GenericResponse;
+    fn run(&self) -> Result<Self::Response, P4Error> {
+        let mut process = self.build_process(CmdType::Query);
+        process.arg("-d");
+        process.flag(self.force, "-f");
+        process.arg(self.command_specific.client_name);
+        let json = self.p4.run(process)?;
+        let response: GenericResponse = serde_json::from_value(json)?;
+        let deleted_re = regex::Regex::new(r"^Client .+ deleted\.$").expect("invalid regex");
+        if !deleted_re.is_match(response.data.trim()) {
+            return Err(P4Error::CommandSpecificError(response.data));
+        }
+        Ok(response)
     }
 }
 
@@ -196,10 +228,18 @@ impl ClientSpec {
             view,
         }
     }
-    pub fn new_with_default_mapping(name: impl Into<String>, root: impl Into<String>, depot_path: impl Into<String>) -> Self { 
+    pub fn new_with_default_mapping(
+        name: impl Into<String>,
+        root: impl Into<String>,
+        depot_path: impl Into<String>,
+    ) -> Self {
         let name = name.into();
         let client_path = format!("//{}/...", &name);
-        Self::new(name, root, vec![ClientMapping::new(depot_path, client_path)])
+        Self::new(
+            name,
+            root,
+            vec![ClientMapping::new(depot_path, client_path)],
+        )
     }
 }
 
@@ -266,7 +306,13 @@ mod tests {
         assert_eq!(spec.backup, Some("enable".into()));
         assert_eq!(spec.client_type, Some("writeable".into()));
         assert_eq!(spec.view.len(), 2);
-        assert_eq!(spec.view, vec![ClientMapping::new("//depot/...", "//dummy/..."), ClientMapping::new("//depot/b/...", "//dummy/...")]);
+        assert_eq!(
+            spec.view,
+            vec![
+                ClientMapping::new("//depot/...", "//dummy/..."),
+                ClientMapping::new("//depot/b/...", "//dummy/...")
+            ]
+        );
     }
 
     #[test]
@@ -346,8 +392,15 @@ View:
 
     #[test]
     fn test_client_spec_new_with_default_mapping() {
-        let spec = ClientSpec::new_with_default_mapping("my-client", "/home/user/workspace", "//depot/...");
+        let spec = ClientSpec::new_with_default_mapping(
+            "my-client",
+            "/home/user/workspace",
+            "//depot/...",
+        );
         assert_eq!(spec.view.len(), 1);
-        assert_eq!(spec.view, vec![ClientMapping::new("//depot/...", "//my-client/...")]);
+        assert_eq!(
+            spec.view,
+            vec![ClientMapping::new("//depot/...", "//my-client/...")]
+        );
     }
 }

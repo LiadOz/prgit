@@ -1,5 +1,8 @@
 use p4rs::extensible::CmdType;
-use p4rs::{ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction, P4Command, P4Error, P4};
+use p4rs::{
+    ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction,
+    P4Command, P4Error, P4,
+};
 use tempfile::TempDir;
 use test_log::test;
 
@@ -145,19 +148,27 @@ fn test_edit_with_changelist() {
 #[test]
 fn test_change_with_multiple_files() {
     let p4 = P4::new();
-    let files = [
-        "//depot/testing/test_file",
-        "//depot/testing/another_file",
-    ];
+    let files = ["//depot/testing/test_file", "//depot/testing/another_file"];
 
     p4.revert(&files).run().ok();
 
     let change_spec = ChangeSpec::new(ChangeType::New).description("Multi-file change");
-    let cl = p4.change().set(&change_spec).run().expect("Failed to create change");
+    let cl = p4
+        .change()
+        .set(&change_spec)
+        .run()
+        .expect("Failed to create change");
 
-    p4.edit(&files).changelist(cl).run().expect("Failed to edit files");
+    p4.edit(&files)
+        .changelist(cl)
+        .run()
+        .expect("Failed to edit files");
 
-    let spec = p4.change().get(Some(cl)).run().expect("Failed to get change spec");
+    let spec = p4
+        .change()
+        .get(Some(cl))
+        .run()
+        .expect("Failed to get change spec");
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
     for f in &files {
@@ -167,14 +178,34 @@ fn test_change_with_multiple_files() {
     p4.revert(&files).run().expect("Failed to revert files");
 }
 
-//#[test]
-//fn test_create_client() {
-//    let p4 = P4::new();
-//    let tmp_dir = TempDir::new().unwrap();
-//    let client_spec = ClientSpec::new_with_default_mapping("my-client", tmp_dir.path().to_str().unwrap(), "//depot/...");
-//    let client_name = p4.set_client(&client_spec).run().expect("Failed to create client");
-//    assert!(!client_name.is_empty());
-//    let result_spec = p4.client(Some(&client_name)).run().expect("Failed to get client spec");
-//    assert_eq!(result_spec.client, "my-client");
-//    assert_eq!(result_spec.view, vec![ClientMapping::new("//depot/...", "//my-client/...")]);
-//}
+#[test]
+fn test_create_client() {
+    let p4 = P4::new();
+    let tmp_dir = TempDir::new().expect("Failed to create temp dir");
+    let client_spec = ClientSpec::new_with_default_mapping(
+        "my-client",
+        tmp_dir.path().to_str().unwrap(),
+        "//depot/...",
+    );
+    let client_name = p4
+        .client()
+        .set(&client_spec)
+        .run()
+        .expect("Failed to create client");
+    assert!(!client_name.is_empty());
+    let result_spec = p4
+        .client()
+        .get(Some(&client_name))
+        .run()
+        .expect("Failed to get client spec");
+    assert_eq!(result_spec.client, "my-client");
+    assert_eq!(
+        result_spec.view,
+        vec![ClientMapping::new("//depot/...", "//my-client/...")]
+    );
+
+    p4.client()
+        .delete(&client_name)
+        .run()
+        .expect("Failed to delete client");
+}
