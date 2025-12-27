@@ -57,7 +57,7 @@ impl Drop for TestClient {
         }
         log::debug!("Reverting opened files");
         if let Ok(opened) = self.p4.opened(&["//..."]).run() {
-            if opened.len() > 0 {
+            if !opened.is_empty() {
                 self.p4
                     .revert(&["//..."])
                     .run()
@@ -73,13 +73,28 @@ impl Drop for TestClient {
     }
 }
 
+#[allow(dead_code)]
+enum ContainerMode {
+    External(u16),
+    Managed(testcontainers::Container<GenericImage>),
+}
+
 pub struct P4Server {
     pub port: u16,
-    _container: testcontainers::Container<GenericImage>,
+    _container: ContainerMode,
 }
 
 impl P4Server {
     pub fn start() -> Self {
+        if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
+            let port = port_str.parse().expect("P4RS_TEST_PORT must be a valid port number");
+            log::info!("Using external P4 server on port {}", port);
+            return Self {
+                port,
+                _container: ContainerMode::External(port),
+            };
+        }
+
         let container = GenericImage::new("p4d-server", "latest")
             .with_exposed_port(1666.into())
             .with_wait_for(WaitFor::seconds(2))
@@ -89,7 +104,7 @@ impl P4Server {
         let port = container.get_host_port_ipv4(1666).unwrap();
         Self {
             port,
-            _container: container,
+            _container: ContainerMode::Managed(container),
         }
     }
 
