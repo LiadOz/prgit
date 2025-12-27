@@ -1,7 +1,7 @@
 use crate::commands::change::Change;
 use crate::commands::client::Client;
 use crate::commands::process::{CmdType, P4Process};
-use crate::commands::{ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand};
+use crate::commands::{AddCommand, ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand, SubmitCommand};
 use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
 use std::path::PathBuf;
@@ -204,6 +204,10 @@ impl P4 {
         Change::new(self)
     }
 
+    pub fn add<'p, 'f>(&'p self, files: &'f [&'f str]) -> AddCommand<'p, 'f> {
+        AddCommand::new(self, files)
+    }
+
     pub fn edit<'p, 'f>(&'p self, files: &'f [&'f str]) -> EditCommand<'p, 'f> {
         EditCommand::new(self, files)
     }
@@ -214,6 +218,10 @@ impl P4 {
 
     pub fn revert<'p, 'f>(&'p self, files: &'f [&'f str]) -> RevertCommand<'p, 'f> {
         RevertCommand::new(self, files)
+    }
+
+    pub fn submit(&self, changelist: usize) -> SubmitCommand<'_> {
+        SubmitCommand::new(self, changelist)
     }
 
     pub fn client(&self) -> Client<'_> {

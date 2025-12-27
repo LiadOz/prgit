@@ -1,11 +1,12 @@
+use p4rs::{ChangeStatus, ClientMapping, ClientSpec, P4Command, P4};
 use std::sync::LazyLock;
-use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
-use p4rs::{P4, P4Command, ClientSpec, ClientMapping, ChangeStatus};
 use tempfile::TempDir;
+use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
 
 pub struct TestClient {
     pub p4: P4,
-    client_name: String,
+    pub client_name: String,
+    _tmp_dir: TempDir,
 }
 
 impl TestClient {
@@ -15,29 +16,60 @@ impl TestClient {
         let client_spec = ClientSpec::new(
             &test_name,
             tmp_dir.path().to_str().unwrap(),
-            vec![ClientMapping::new(format!("//depot/{test_name}/..."), format!("//{test_name}/..."))],
+            vec![ClientMapping::new(
+                format!("//depot/{test_name}/..."),
+                format!("//{test_name}/..."),
+            )],
         );
-        p4.client().set(&client_spec).run().expect("Failed to create client");
-        Self { p4: p4.client_name(&test_name), client_name: test_name }
+        p4.client()
+            .set(&client_spec)
+            .run()
+            .expect("Failed to create client");
+        Self {
+            p4: p4.client_name(&test_name),
+            client_name: test_name,
+            _tmp_dir: tmp_dir,
+        }
+    }
+
+    pub fn client_root(&self) -> &std::path::Path {
+        self._tmp_dir.path()
     }
 }
 
 impl Drop for TestClient {
     fn drop(&mut self) {
         log::debug!("Cleaning up test client {}", self.client_name);
-        let pending_changes = self.p4.changes(&[]).status(ChangeStatus::Pending).run().expect("Failed to get changes");
+        let pending_changes = self
+            .p4
+            .changes(&[])
+            .status(ChangeStatus::Pending)
+            .client(&self.client_name)
+            .run()
+            .expect("Failed to get changes");
         log::debug!("Deleting {} pending changes", pending_changes.len());
         for change in pending_changes {
-            self.p4.change().delete(change.change).run().expect("Failed to delete change");
+            self.p4
+                .change()
+                .delete(change.change)
+                .run()
+                .expect("Failed to delete change");
         }
         log::debug!("Reverting opened files");
         if let Ok(opened) = self.p4.opened(&["//..."]).run() {
             if opened.len() > 0 {
-                self.p4.revert(&["//..."]).run().expect("Failed to revert all");
+                self.p4
+                    .revert(&["//..."])
+                    .run()
+                    .expect("Failed to revert all");
             }
         }
         log::debug!("Deleting client {}", self.client_name);
-        self.p4.client().delete(&self.client_name).run().expect("Failed to delete client");
+        self.p4
+            .client()
+            .delete(&self.client_name)
+            .run()
+            .expect("Failed to delete client");
     }
 }
 
@@ -55,7 +87,10 @@ impl P4Server {
             .expect("Failed to start P4 server");
 
         let port = container.get_host_port_ipv4(1666).unwrap();
-        Self { port, _container: container }
+        Self {
+            port,
+            _container: container,
+        }
     }
 
     pub fn p4(&self) -> P4 {

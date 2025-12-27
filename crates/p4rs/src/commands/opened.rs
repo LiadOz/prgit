@@ -3,8 +3,20 @@ use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_with::{serde_as, DisplayFromStr};
+
+fn deserialize_have_rev<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s == "none" {
+        Ok(None)
+    } else {
+        s.parse().map(Some).map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,8 +98,8 @@ pub struct OpenedFile {
     pub client_file: String,
     #[serde_as(as = "DisplayFromStr")]
     pub rev: usize,
-    #[serde_as(as = "DisplayFromStr")]
-    pub have_rev: usize,
+    #[serde(deserialize_with = "deserialize_have_rev")]
+    pub have_rev: Option<usize>,
     pub action: OpenAction,
     #[serde_as(as = "DisplayFromStr")]
     pub change: ChangeType,

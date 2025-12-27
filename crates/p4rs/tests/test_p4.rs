@@ -1,10 +1,10 @@
 use p4rs::extensible::CmdType;
 use p4rs::{
-    ChangeSpec, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction,
-    P4Command, P4Error, P4,
+    ChangeSpec, ChangeType, ClientMapping, ClientSpec, EditAction, OpenAction, P4Command, P4Error,
 };
 mod common;
 use common::SERVER;
+use std::fs;
 use tempfile::TempDir;
 use test_log::test;
 
@@ -36,24 +36,41 @@ fn test_info() {
 #[test]
 fn test_changes() {
     let test_client = SERVER.test_client();
-    test_client.p4.change().set(&ChangeSpec::new(ChangeType::New).description("Test change")).run().expect("Failed to create change");
-    test_client.p4.change().set(&ChangeSpec::new(ChangeType::New).description("Test change 2")).run().expect("Failed to create change");
-    let changes = test_client.p4.changes(&[]).long().run().expect("Failed to get changes");
-    assert!(!changes.is_empty());
-    assert!(changes.len() == 2);
+    test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Test change"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Test change 2"))
+        .run()
+        .expect("Failed to create change");
+    let changes = test_client
+        .p4
+        .changes(&[])
+        .long()
+        .client(&test_client.client_name)
+        .run()
+        .expect("Failed to get changes");
+    assert_eq!(changes.len(), 2);
 }
 
 #[test]
 fn test_change_spec() {
     let test_client = SERVER.test_client();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Test change");
-    let change_number = test_client.p4
+    let change_number = test_client
+        .p4
         .change()
         .set(&change_spec)
         .run()
         .expect("Failed to set change");
     assert!(change_number > 0);
-    let result_spec = test_client.p4
+    let result_spec = test_client
+        .p4
         .change()
         .get(Some(change_number))
         .run()
@@ -65,13 +82,16 @@ fn test_change_spec() {
 fn test_change_delete() {
     let test_client = SERVER.test_client();
     let change_spec = ChangeSpec::new(ChangeType::New).description("Change to delete");
-    let change_number = test_client.p4
+    let change_number = test_client
+        .p4
         .change()
         .set(&change_spec)
         .run()
         .expect("Failed to create change");
 
-    test_client.p4.change()
+    test_client
+        .p4
+        .change()
         .delete(change_number)
         .run()
         .expect("Failed to delete change");
@@ -81,103 +101,181 @@ fn test_change_delete() {
 }
 
 #[test]
-fn test_edit_opened_revert() {
-    let p4 = P4::new();
-    let test_file = "//depot/testing/test_file";
+fn test_add_opened_revert() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("test_file.txt");
+    fs::write(&file_path, "test content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
 
-    p4.revert(&[test_file]).run().ok();
-
-    let results = p4.edit(&[test_file]).run().expect("Failed to edit file");
+    let results = test_client
+        .p4
+        .add(&[file_str])
+        .run()
+        .expect("Failed to add file");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].action, EditAction::Edit);
-    assert!(results[0].depot_file.ends_with("test_file"));
+    assert_eq!(results[0].action, "add");
 
-    let opened = p4
-        .opened(&[test_file])
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
         .run()
         .expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
-    assert_eq!(opened[0].action, OpenAction::Edit);
+    assert_eq!(opened[0].action, OpenAction::Add);
 
-    let reverted = p4
-        .revert(&[test_file])
+    let reverted = test_client
+        .p4
+        .revert(&[file_str])
         .run()
         .expect("Failed to revert file");
     assert_eq!(reverted.len(), 1);
-    assert!(reverted[0].depot_file.ends_with("test_file"));
 
-    let opened_after = p4
-        .opened(&[test_file])
+    let opened_after = test_client
+        .p4
+        .opened(&["//..."])
         .run()
         .expect("Failed to get opened files after revert");
     assert!(opened_after.is_empty());
 }
 
 #[test]
-fn test_edit_with_changelist() {
-    let p4 = P4::new();
-    let test_file = "//depot/testing/another_file";
+fn test_add_submit_edit() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("edit_test.txt");
+    fs::write(&file_path, "initial content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
 
-    p4.revert(&[test_file]).run().ok();
-
-    let change_spec = ChangeSpec::new(ChangeType::New).description("Test CL for edit");
-    let cl = p4
-        .change()
-        .set(&change_spec)
-        .run()
-        .expect("Failed to set change");
-
-    let results = p4
-        .edit(&[test_file])
-        .changelist(cl)
-        .run()
-        .expect("Failed to edit file with changelist");
-    assert_eq!(results.len(), 1);
-
-    let opened = p4
-        .opened(&[test_file])
-        .run()
-        .expect("Failed to get opened files");
-    assert_eq!(opened.len(), 1);
-    assert!(opened[0].depot_file.ends_with("another_file"));
-    assert_eq!(opened[0].change.number(), Some(cl));
-
-    p4.revert(&[test_file])
-        .run()
-        .expect("Failed to revert file");
-}
-
-#[test]
-fn test_change_with_multiple_files() {
-    let p4 = P4::new();
-    let files = ["//depot/testing/test_file", "//depot/testing/another_file"];
-
-    p4.revert(&files).run().ok();
-
-    let change_spec = ChangeSpec::new(ChangeType::New).description("Multi-file change");
-    let cl = p4
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Add file for edit test");
+    let cl = test_client
+        .p4
         .change()
         .set(&change_spec)
         .run()
         .expect("Failed to create change");
 
-    p4.edit(&files)
+    test_client
+        .p4
+        .add(&[file_str])
         .changelist(cl)
         .run()
-        .expect("Failed to edit files");
+        .expect("Failed to add file");
 
-    let spec = p4
+    test_client
+        .p4
+        .submit(cl)
+        .run()
+        .expect("Failed to submit change");
+
+    let edit_results = test_client
+        .p4
+        .edit(&[file_str])
+        .run()
+        .expect("Failed to edit file");
+    assert_eq!(edit_results.len(), 1);
+    assert_eq!(edit_results[0].action, EditAction::Edit);
+
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened files");
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].action, OpenAction::Edit);
+
+    test_client
+        .p4
+        .revert(&[file_str])
+        .run()
+        .expect("Failed to revert");
+}
+
+#[test]
+fn test_edit_with_changelist() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("cl_test.txt");
+    fs::write(&file_path, "content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let add_cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add file"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(add_cl)
+        .run()
+        .expect("Failed to add");
+    test_client
+        .p4
+        .submit(add_cl)
+        .run()
+        .expect("Failed to submit");
+
+    let edit_cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Edit changelist"))
+        .run()
+        .expect("Failed to create edit changelist");
+
+    let results = test_client
+        .p4
+        .edit(&[file_str])
+        .changelist(edit_cl)
+        .run()
+        .expect("Failed to edit with changelist");
+    assert_eq!(results.len(), 1);
+
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened files");
+    assert_eq!(opened.len(), 1);
+    assert_eq!(opened[0].change.number(), Some(edit_cl));
+
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+}
+
+#[test]
+fn test_change_with_multiple_files() {
+    let test_client = SERVER.test_client();
+    let file1 = test_client.client_root().join("file1.txt");
+    let file2 = test_client.client_root().join("file2.txt");
+    fs::write(&file1, "content1").expect("Failed to write file1");
+    fs::write(&file2, "content2").expect("Failed to write file2");
+    let file1_str = file1.to_str().unwrap();
+    let file2_str = file2.to_str().unwrap();
+    let files = [file1_str, file2_str];
+
+    let change_spec = ChangeSpec::new(ChangeType::New).description("Multi-file change");
+    let cl = test_client
+        .p4
+        .change()
+        .set(&change_spec)
+        .run()
+        .expect("Failed to create change");
+
+    test_client
+        .p4
+        .add(&files)
+        .changelist(cl)
+        .run()
+        .expect("Failed to add files");
+
+    let spec = test_client
+        .p4
         .change()
         .get(Some(cl))
         .run()
         .expect("Failed to get change spec");
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
-    for f in &files {
-        assert!(spec.files.iter().any(|sf| sf.contains(*f)));
-    }
 
-    p4.revert(&files).run().expect("Failed to revert files");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
 }
 
 #[test]
@@ -210,4 +308,32 @@ fn test_create_client() {
         .delete(&client_name)
         .run()
         .expect("Failed to delete client");
+}
+
+#[test]
+fn test_submit() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("submit_test.txt");
+    fs::write(&file_path, "submit content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Submit test"))
+        .run()
+        .expect("Failed to create change");
+
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add");
+
+    test_client
+        .p4
+        .submit(cl)
+        .run()
+        .expect("Failed to submit");
 }

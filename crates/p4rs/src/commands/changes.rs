@@ -21,6 +21,7 @@ pub struct ChangesCommand<'p, 'f> {
     max_changes: Option<usize>,
     status: Option<ChangeStatus>,
     user: Option<String>,
+    client: Option<String>,
 }
 
 impl<'p, 'f> ChangesCommand<'p, 'f> {
@@ -34,6 +35,7 @@ impl<'p, 'f> ChangesCommand<'p, 'f> {
             max_changes: None,
             status: None,
             user: None,
+            client: None,
         }
     }
 }
@@ -49,6 +51,7 @@ impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
             .opt("-m", &self.max_changes)
             .opt("-s", &self.status)
             .opt("-u", &self.user)
+            .opt("-c", &self.client)
             .args(self.files);
         let json = self.p4.run_multi_line(process)?;
         Ok(serde_json::from_value(json)?)
