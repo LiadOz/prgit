@@ -20,4 +20,5 @@ pub use commands::types::{BaseFileType, ChangeStatus, FileType};
 #[cfg(feature = "extensible")]
 pub mod extensible {
     pub use crate::commands::process::{CmdType, P4Process};
+    pub use crate::commands::types::extract_numbered;
 }

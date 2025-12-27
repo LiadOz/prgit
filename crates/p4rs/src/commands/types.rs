@@ -1,7 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
 #[derive(Deserialize, Debug)]
 pub struct GenericResponse {
@@ -9,94 +8,49 @@ pub struct GenericResponse {
     pub level: usize,
 }
 
+/// Extracts numbered fields from a P4 response map into a sorted vector.
+///
 /// P4 outputs list fields as numbered keys (e.g. `Files0`, `Files1`, `View0`, `View1`)
-/// instead of arrays. `NumberedVec` deserializes these into a `Vec<T>` transparently.
+/// instead of arrays. This function extracts all fields matching the given prefix,
+/// parses them into the target type, and returns them sorted by index.
 ///
-/// Usage with `#[serde(flatten)]`:
-/// ```ignore
-/// #[derive(Deserialize)]
-/// struct ChangeSpec {
-///     #[serde(flatten)]
-///     pub files: NumberedVec<FilesPrefix>,
-/// }
-/// ```
+/// # Arguments
+/// * `map` - The flattened extra fields from a P4 response
+/// * `prefix` - The field name prefix to match (e.g. "Files", "View")
 ///
-/// The type derefs to `Vec<T>`, so it can be used exactly like a vector.
-pub trait Prefix {
-    const VALUE: &'static str;
+/// # Returns
+/// A vector of parsed values, sorted by their numeric suffix. Values that fail
+/// to parse are silently skipped.
+#[cfg(feature = "extensible")]
+pub fn extract_numbered<T>(map: &HashMap<String, String>, prefix: &str) -> Vec<T>
+where
+    T: std::str::FromStr,
+{
+    extract_numbered_inner(map, prefix)
 }
 
-macro_rules! define_prefix {
-    ($name:ident, $prefix:literal) => {
-        #[derive(Debug, Default)]
-        pub struct $name;
-        impl Prefix for $name {
-            const VALUE: &'static str = $prefix;
-        }
-    };
+#[cfg(not(feature = "extensible"))]
+pub(crate) fn extract_numbered<T>(map: &HashMap<String, String>, prefix: &str) -> Vec<T>
+where
+    T: std::str::FromStr,
+{
+    extract_numbered_inner(map, prefix)
 }
 
-define_prefix!(FilesPrefix, "Files");
-define_prefix!(ViewPrefix, "View");
-
-#[derive(Debug, Default)]
-pub struct NumberedVec<P: Prefix, T: std::str::FromStr = String>(Vec<T>, PhantomData<P>);
-
-impl<P: Prefix, T: std::str::FromStr> NumberedVec<P, T> {
-    pub fn new(v: Vec<T>) -> Self {
-        Self(v, PhantomData)
-    }
-}
-
-impl<P: Prefix, T: std::str::FromStr> std::ops::Deref for NumberedVec<P, T> {
-    type Target = Vec<T>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<P: Prefix, T: std::str::FromStr> std::ops::DerefMut for NumberedVec<P, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<P: Prefix, T: std::str::FromStr> From<Vec<T>> for NumberedVec<P, T> {
-    fn from(v: Vec<T>) -> Self {
-        Self(v, PhantomData)
-    }
-}
-
-impl<P: Prefix, T: std::str::FromStr + PartialEq> PartialEq<Vec<T>> for NumberedVec<P, T> {
-    fn eq(&self, other: &Vec<T>) -> bool {
-        self.0 == *other
-    }
-}
-
-impl<'de, P: Prefix, T: std::str::FromStr> Deserialize<'de> for NumberedVec<P, T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let map: HashMap<String, String> = HashMap::deserialize(deserializer)?;
-        let mut items: Vec<_> = map
-            .into_iter()
-            .filter_map(|(k, v)| {
-                k.strip_prefix(P::VALUE)?
-                    .parse::<usize>()
-                    .ok()
-                    .map(|i| (i, v))
-            })
-            .collect();
-        items.sort_by_key(|(i, _)| *i);
-        Ok(NumberedVec(
-            items
-                .into_iter()
-                .filter_map(|(_, v)| v.parse().ok())
-                .collect(),
-            PhantomData,
-        ))
-    }
+fn extract_numbered_inner<T>(map: &HashMap<String, String>, prefix: &str) -> Vec<T>
+where
+    T: std::str::FromStr,
+{
+    let mut v: Vec<(usize, T)> = map
+        .iter()
+        .filter_map(|(k, v)| {
+            k.strip_prefix(prefix)
+                .and_then(|n| n.parse::<usize>().ok())
+                .and_then(|i| v.parse::<T>().ok().map(|val| (i, val)))
+        })
+        .collect();
+    v.sort_by_key(|(i, _)| *i);
+    v.into_iter().map(|(_, v)| v).collect()
 }
 
 pub fn deserialize_p4_date<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
@@ -299,24 +253,59 @@ mod tests {
         assert_eq!(ChangeStatus::Shelved.to_string(), "shelved");
     }
 
-    define_prefix!(TestPrefix, "Num");
-
     #[test]
-    fn test_numbered_vec_with_usize() {
-        let json = r#"{"Num0": "42", "Num1": "100", "Num2": "7"}"#;
-        let nv: NumberedVec<TestPrefix, usize> = serde_json::from_str(json).unwrap();
-        assert_eq!(nv.len(), 3);
-        assert_eq!(nv[0], 42);
-        assert_eq!(nv[1], 100);
-        assert_eq!(nv[2], 7);
+    fn test_extract_numbered_strings() {
+        let mut map = HashMap::new();
+        map.insert("Files0".to_string(), "a.txt".to_string());
+        map.insert("Files1".to_string(), "b.txt".to_string());
+        map.insert("Files2".to_string(), "c.txt".to_string());
+        map.insert("Other".to_string(), "ignored".to_string());
+        let result: Vec<String> = extract_numbered(&map, "Files");
+        assert_eq!(result, vec!["a.txt", "b.txt", "c.txt"]);
     }
 
     #[test]
-    fn test_numbered_vec_with_strings() {
-        let json = r#"{"Files0": "a.txt", "Files1": "b.txt"}"#;
-        let nv: NumberedVec<FilesPrefix> = serde_json::from_str(json).unwrap();
-        assert_eq!(nv.len(), 2);
-        assert_eq!(nv[0], "a.txt");
-        assert_eq!(nv[1], "b.txt");
+    fn test_extract_numbered_usize() {
+        let mut map = HashMap::new();
+        map.insert("Num0".to_string(), "42".to_string());
+        map.insert("Num1".to_string(), "100".to_string());
+        map.insert("Num2".to_string(), "7".to_string());
+        let result: Vec<usize> = extract_numbered(&map, "Num");
+        assert_eq!(result, vec![42, 100, 7]);
+    }
+
+    #[test]
+    fn test_extract_numbered_out_of_order() {
+        let mut map = HashMap::new();
+        map.insert("Item2".to_string(), "third".to_string());
+        map.insert("Item0".to_string(), "first".to_string());
+        map.insert("Item1".to_string(), "second".to_string());
+        let result: Vec<String> = extract_numbered(&map, "Item");
+        assert_eq!(result, vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn test_extract_numbered_empty() {
+        let map: HashMap<String, String> = HashMap::new();
+        let result: Vec<String> = extract_numbered(&map, "Files");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_numbered_no_matches() {
+        let mut map = HashMap::new();
+        map.insert("Other0".to_string(), "value".to_string());
+        let result: Vec<String> = extract_numbered(&map, "Files");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_numbered_skips_invalid_parse() {
+        let mut map = HashMap::new();
+        map.insert("Num0".to_string(), "42".to_string());
+        map.insert("Num1".to_string(), "not_a_number".to_string());
+        map.insert("Num2".to_string(), "7".to_string());
+        let result: Vec<usize> = extract_numbered(&map, "Num");
+        assert_eq!(result, vec![42, 7]);
     }
 }

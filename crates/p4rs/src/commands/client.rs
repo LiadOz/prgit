@@ -1,10 +1,10 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
-use crate::commands::types::{deserialize_p4_date, NumberedVec, ViewPrefix};
+use crate::commands::types::extract_numbered;
 use crate::error::P4Error;
 use crate::p4::P4;
-use chrono::{DateTime, Utc};
 use derive_setters::Setters;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -57,7 +57,8 @@ impl<'p, 's> P4Command for ClientCommand<'p, Option<&'s str>> {
             process.arg(name);
         }
         let json = self.p4.run(process)?;
-        Ok(serde_json::from_value(json)?)
+        let raw: ClientSpecRaw = serde_json::from_value(json)?;
+        Ok(raw.into())
     }
 }
 
@@ -119,31 +120,64 @@ impl std::fmt::Display for ClientMapping {
     }
 }
 
-#[derive(Debug, Deserialize, Setters)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+struct ClientSpecRaw {
+    client: String,
+    #[serde(default)]
+    owner: Option<String>,
+    #[serde(default)]
+    host: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    root: String,
+    #[serde(default)]
+    options: Option<String>,
+    #[serde(default)]
+    submit_options: Option<String>,
+    #[serde(default)]
+    line_end: Option<String>,
+    #[serde(default)]
+    backup: Option<String>,
+    #[serde(default, rename = "Type")]
+    client_type: Option<String>,
+    #[serde(flatten)]
+    extra: HashMap<String, String>,
+}
+
+#[derive(Debug, Setters)]
 #[setters(into, strip_option)]
 pub struct ClientSpec {
     #[setters(skip)]
     pub client: String,
-    #[serde(default)]
     pub owner: Option<String>,
-    #[serde(default)]
     pub host: Option<String>,
-    #[serde(default)]
     pub description: Option<String>,
     pub root: String,
-    #[serde(default)]
     pub options: Option<String>,
-    #[serde(default)]
     pub submit_options: Option<String>,
-    #[serde(default)]
     pub line_end: Option<String>,
-    #[serde(default)]
     pub backup: Option<String>,
-    #[serde(default, rename = "Type")]
     pub client_type: Option<String>,
-    #[serde(flatten)]
-    pub view: NumberedVec<ViewPrefix, ClientMapping>,
+    pub view: Vec<ClientMapping>,
+}
+
+impl From<ClientSpecRaw> for ClientSpec {
+    fn from(raw: ClientSpecRaw) -> Self {
+        Self {
+            client: raw.client,
+            owner: raw.owner,
+            host: raw.host,
+            description: raw.description,
+            root: raw.root,
+            options: raw.options,
+            submit_options: raw.submit_options,
+            line_end: raw.line_end,
+            backup: raw.backup,
+            client_type: raw.client_type,
+            view: extract_numbered(&raw.extra, "View"),
+        }
+    }
 }
 
 impl ClientSpec {
@@ -159,7 +193,7 @@ impl ClientSpec {
             line_end: None,
             backup: None,
             client_type: None,
-            view: view.into(),
+            view,
         }
     }
     pub fn new_with_default_mapping(name: impl Into<String>, root: impl Into<String>, depot_path: impl Into<String>) -> Self { 
@@ -216,10 +250,15 @@ impl std::fmt::Display for ClientSpec {
 mod tests {
     use super::*;
 
+    fn parse_spec(json: &str) -> ClientSpec {
+        let raw: ClientSpecRaw = serde_json::from_str(json).unwrap();
+        raw.into()
+    }
+
     #[test]
     fn test_client_spec_deserialize() {
         let json = r#"{"Access":"2025/12/26 19:26:10","Backup":"enable","Client":"dummy","Description":"Created by ozonzono.\n","Host":"DESKTOP-1B13Q6A","LineEnd":"local","Options":"noallwrite noclobber nocompress unlocked nomodtime normdir noaltsync","Owner":"ozonzono","Root":"/home/ozonzono/tools/perforce/clients/1","SubmitOptions":"submitunchanged","Type":"writeable","Update":"2025/12/26 19:26:10","View0":"//depot/... //dummy/...","View1":"//depot/b/... //dummy/..."}"#;
-        let spec: ClientSpec = serde_json::from_str(json).unwrap();
+        let spec = parse_spec(json);
         assert_eq!(spec.client, "dummy");
         assert_eq!(spec.owner, Some("ozonzono".into()));
         assert_eq!(spec.host, Some("DESKTOP-1B13Q6A".into()));
