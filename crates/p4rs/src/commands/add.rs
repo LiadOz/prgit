@@ -54,4 +54,3 @@ pub struct AddResult {
     #[serde(rename = "type")]
     pub file_type: String,
 }
-

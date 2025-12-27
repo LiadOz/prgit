@@ -237,7 +237,11 @@ fn test_edit_with_changelist() {
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].change.number(), Some(edit_cl));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
 }
 
 #[test]
@@ -275,7 +279,11 @@ fn test_change_with_multiple_files() {
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
 }
 
 #[test]
@@ -331,9 +339,5 @@ fn test_submit() {
         .run()
         .expect("Failed to add");
 
-    test_client
-        .p4
-        .submit(cl)
-        .run()
-        .expect("Failed to submit");
+    test_client.p4.submit(cl).run().expect("Failed to submit");
 }

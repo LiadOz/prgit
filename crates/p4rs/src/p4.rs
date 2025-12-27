@@ -1,7 +1,10 @@
 use crate::commands::change::Change;
 use crate::commands::client::Client;
 use crate::commands::process::{CmdType, P4Process};
-use crate::commands::{AddCommand, ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand, SubmitCommand};
+use crate::commands::{
+    AddCommand, ChangesCommand, EditCommand, InfoCommand, OpenedCommand, RevertCommand,
+    SubmitCommand,
+};
 use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
 use std::path::PathBuf;
@@ -126,13 +129,19 @@ impl P4 {
                 }
                 _ => {
                     let error_response: ErrorResponse = serde_json::from_slice(&output.stdout)?;
-                    return Err(P4Error::CommandFailed(error_response.data, error_response.severity));
+                    return Err(P4Error::CommandFailed(
+                        error_response.data,
+                        error_response.severity,
+                    ));
                 }
             }
         }
         if p4_process.cmd_type != CmdType::FormInput {
             if let Ok(error_response) = serde_json::from_slice::<ErrorResponse>(&output.stdout) {
-                return Err(P4Error::CommandSpecificError(error_response.data, error_response.severity));
+                return Err(P4Error::CommandSpecificError(
+                    error_response.data,
+                    error_response.severity,
+                ));
             }
         }
         Ok(output)

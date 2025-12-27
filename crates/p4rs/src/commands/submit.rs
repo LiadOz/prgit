@@ -22,4 +22,3 @@ impl<'p> P4Command for SubmitCommand<'p> {
         Ok(())
     }
 }
-
