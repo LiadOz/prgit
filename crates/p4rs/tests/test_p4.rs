@@ -1031,3 +1031,76 @@ fn test_sync() {
         .expect("Failed to force sync");
     assert_eq!(force_results.len(), 1);
 }
+
+#[test]
+fn test_sync_metadata_only() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("sync_metadata.txt");
+
+    // Create and submit rev 1
+    fs::write(&file_path, "revision 1 content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+    let cl1 = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Rev 1"))
+        .run()
+        .expect("Failed to create change 1");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(cl1)
+        .run()
+        .expect("Failed to add");
+    test_client.p4.submit(cl1).run().expect("Failed to submit rev 1");
+
+    // Edit and submit rev 2
+    test_client
+        .p4
+        .edit(&[file_str])
+        .run()
+        .expect("Failed to edit");
+    fs::write(&file_path, "revision 2 content").expect("Failed to write rev 2");
+    let cl2 = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Rev 2"))
+        .run()
+        .expect("Failed to create change 2");
+    test_client
+        .p4
+        .reopen(&[file_str])
+        .changelist(cl2)
+        .run()
+        .expect("Failed to reopen");
+    test_client.p4.submit(cl2).run().expect("Failed to submit rev 2");
+
+    // Verify we're at rev 2
+    let rev2_content = fs::read_to_string(&file_path).expect("Failed to read");
+    assert_eq!(rev2_content, "revision 2 content");
+
+    // Use metadata_only to update have list to rev 1 without changing file
+    let metadata_results = test_client
+        .p4
+        .sync(&[&format!("{}#1", file_str)])
+        .metadata_only()
+        .run()
+        .expect("Failed to sync metadata only");
+    assert_eq!(metadata_results.len(), 1);
+    assert_eq!(metadata_results[0].rev, 1);
+
+    // File should still have rev 2 content (not overwritten)
+    let after_metadata = fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
+    assert_eq!(after_metadata, "revision 2 content");
+
+    // Verify have list shows rev 1 by checking opened
+    let have = test_client
+        .p4
+        .sync(&[file_str])
+        .preview()
+        .run()
+        .expect("Failed to check have");
+    // Should want to sync to rev 2 since we're at rev 1 in have list
+    assert_eq!(have.len(), 1);
+    assert_eq!(have[0].rev, 2);
+}
