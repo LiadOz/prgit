@@ -16,12 +16,24 @@ thiserror = "2.0.17"
 
 [features]
 extensible = []
+testkit = ["dep:testcontainers", "dep:tempfile", "dep:uuid"]
+
+[dependencies.testcontainers]
+version = "0.23"
+features = ["blocking"]
+optional = true
+
+[dependencies.tempfile]
+version = "3.24.0"
+optional = true
+
+[dependencies.uuid]
+version = "1"
+features = ["v4"]
+optional = true
 
 [dev-dependencies]
 env_logger = "0.11.8"
 test-log = "0.2.19"
-testcontainers = { version = "0.23", features = ["blocking"] }
-p4rs = { path = ".", features = ["extensible"] }
-tempfile = "3.24.0"
-uuid = { version = "1", features = ["v4"] }
+p4rs = { path = ".", features = ["extensible", "testkit"] }
 

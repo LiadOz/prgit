@@ -30,3 +30,6 @@ pub mod extensible {
     pub use crate::commands::process::{CmdType, P4Process};
     pub use crate::commands::types::extract_numbered;
 }
+
+#[cfg(feature = "testkit")]
+pub mod testkit;

@@ -1,10 +1,9 @@
 use p4rs::extensible::CmdType;
+use p4rs::testkit::SERVER;
 use p4rs::{
     ChangeSpec, ChangeType, ClientMapping, ClientSpec, EditAction, FileAction, OpenAction,
     P4Command, P4Error,
 };
-mod common;
-use common::SERVER;
 use std::fs;
 use tempfile::TempDir;
 use test_log::test;

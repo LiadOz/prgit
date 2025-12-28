@@ -1,7 +1,9 @@
-use p4rs::{ChangeStatus, ClientMapping, ClientSpec, P4Command, P4};
+use crate::{ChangeStatus, ClientMapping, ClientSpec, P4Command, P4};
 use std::sync::LazyLock;
 use tempfile::TempDir;
 use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
+
+const DEFAULT_IMAGE: &str = "p4d-server";
 
 pub struct TestClient {
     pub p4: P4,
@@ -97,7 +99,8 @@ impl P4Server {
             };
         }
 
-        let container = GenericImage::new("p4d-server", "latest")
+        let image = std::env::var("P4RS_TEST_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string());
+        let container = GenericImage::new(image, "latest".to_string())
             .with_exposed_port(1666.into())
             .with_wait_for(WaitFor::seconds(2))
             .start()
@@ -120,3 +123,4 @@ impl P4Server {
 }
 
 pub static SERVER: LazyLock<P4Server> = LazyLock::new(P4Server::start);
+
