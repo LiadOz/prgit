@@ -967,3 +967,67 @@ fn test_print_to_file_unmapped_path() {
         err_str
     );
 }
+
+#[test]
+fn test_sync() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("sync_test.txt");
+    fs::write(&file_path, "sync content").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    // Add and submit a file
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Sync test"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add");
+    test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    // Sync to #none to remove the file from workspace
+    test_client
+        .p4
+        .sync(&[&format!("{}#none", file_str)])
+        .run()
+        .expect("Failed to sync to #none");
+    assert!(!file_path.exists());
+
+    // Test sync preview (should not actually sync)
+    let preview_results = test_client
+        .p4
+        .sync(&[file_str])
+        .preview()
+        .run()
+        .expect("Failed to sync preview");
+    assert_eq!(preview_results.len(), 1);
+    assert!(preview_results[0].depot_file.contains("sync_test.txt"));
+    // File should still be missing after preview
+    assert!(!file_path.exists());
+
+    // Test actual sync
+    let results = test_client
+        .p4
+        .sync(&[file_str])
+        .run()
+        .expect("Failed to sync");
+    assert_eq!(results.len(), 1);
+    assert!(results[0].depot_file.contains("sync_test.txt"));
+    assert_eq!(results[0].rev, 1);
+    // File should exist after sync
+    assert!(file_path.exists());
+
+    // Test force sync (should re-sync even though file exists)
+    let force_results = test_client
+        .p4
+        .sync(&[file_str])
+        .force()
+        .run()
+        .expect("Failed to force sync");
+    assert_eq!(force_results.len(), 1);
+}

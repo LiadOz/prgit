@@ -13,6 +13,7 @@ pub mod reopen;
 pub mod revert;
 pub mod shelve;
 pub mod submit;
+pub mod sync;
 pub mod types;
 
 pub(crate) use add::AddCommand;

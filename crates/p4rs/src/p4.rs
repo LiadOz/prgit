@@ -3,6 +3,7 @@ use crate::commands::client::Client;
 use crate::commands::print::Print;
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::shelve::Shelve;
+use crate::commands::sync::SyncCommand;
 use crate::commands::{
     AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, InfoCommand,
     OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
@@ -272,6 +273,10 @@ impl P4 {
 
     pub fn print(&self) -> Print<'_> {
         Print::new(self)
+    }
+
+    pub fn sync<'p, 'f>(&'p self, files: &'f [&'f str]) -> SyncCommand<'p, 'f> {
+        SyncCommand::new(self, files)
     }
 }
 
