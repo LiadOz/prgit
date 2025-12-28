@@ -1104,3 +1104,25 @@ fn test_sync_metadata_only() {
     assert_eq!(have.len(), 1);
     assert_eq!(have[0].rev, 2);
 }
+
+#[test]
+fn test_user() {
+    let test_client = SERVER.test_client();
+
+    // Get current user from info
+    let info = test_client.p4.info().run().expect("Failed to get info");
+    let username = &info.user_name;
+
+    // Get user info
+    let user_info = test_client
+        .p4
+        .user()
+        .get(username)
+        .run()
+        .expect("Failed to get user");
+
+    // Just verify fields have content, don't assert specific values
+    assert!(!user_info.user.is_empty());
+    assert!(!user_info.email.is_empty());
+    assert!(!user_info.full_name.is_empty());
+}

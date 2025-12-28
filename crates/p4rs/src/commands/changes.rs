@@ -71,4 +71,5 @@ pub struct ChangeData {
     pub status: ChangeStatus,
     pub time: String,
     pub user: String,
+    pub old_change: Option<usize>,
 }
