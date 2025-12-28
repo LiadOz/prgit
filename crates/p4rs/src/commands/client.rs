@@ -1,5 +1,5 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
-use crate::commands::types::{extract_numbered, GenericResponse};
+use crate::commands::types::{extract_numbered, GenericResponse, LineEnding};
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
@@ -188,7 +188,7 @@ pub struct ClientSpec {
     pub root: String,
     pub options: Option<String>,
     pub submit_options: Option<String>,
-    pub line_end: Option<String>,
+    pub line_end: Option<LineEnding>,
     pub backup: Option<String>,
     pub client_type: Option<String>,
     pub view: Vec<ClientMapping>,
@@ -204,7 +204,7 @@ impl From<ClientSpecRaw> for ClientSpec {
             root: raw.root,
             options: raw.options,
             submit_options: raw.submit_options,
-            line_end: raw.line_end,
+            line_end: raw.line_end.and_then(|s| s.parse().ok()),
             backup: raw.backup,
             client_type: raw.client_type,
             view: extract_numbered(&raw.extra, "View"),
@@ -330,7 +330,7 @@ mod tests {
         .description("Test client")
         .options("noallwrite noclobber nocompress unlocked nomodtime normdir")
         .submit_options("submitunchanged")
-        .line_end("local");
+        .line_end(LineEnding::Local);
         assert_eq!(
             spec.to_string(),
             "\

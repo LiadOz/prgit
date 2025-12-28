@@ -1,5 +1,6 @@
 use crate::commands::change::Change;
 use crate::commands::client::Client;
+use crate::commands::print::Print;
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::shelve::Shelve;
 use crate::commands::{
@@ -129,23 +130,38 @@ impl P4 {
                     ));
                 }
                 _ => {
-                    let error_response: ErrorResponse = serde_json::from_slice(&output.stdout)?;
-                    return Err(P4Error::CommandFailed(
-                        error_response.data,
-                        error_response.severity,
-                    ));
+                    if let Some((data, severity)) = Self::extract_errors(&output.stdout) {
+                        return Err(P4Error::CommandFailed(data, severity));
+                    }
                 }
             }
         }
         if p4_process.cmd_type != CmdType::FormInput {
-            if let Ok(error_response) = serde_json::from_slice::<ErrorResponse>(&output.stdout) {
-                return Err(P4Error::CommandSpecificError(
-                    error_response.data,
-                    error_response.severity,
-                ));
+            if let Some((data, severity)) = Self::extract_errors(&output.stdout) {
+                return Err(P4Error::CommandSpecificError(data, severity));
             }
         }
         Ok(output)
+    }
+
+    fn extract_errors(stdout: &[u8]) -> Option<(String, usize)> {
+        let stdout_str = String::from_utf8_lossy(stdout);
+        let errors: Vec<ErrorResponse> = stdout_str
+            .lines()
+            .filter_map(|line| serde_json::from_str::<ErrorResponse>(line).ok())
+            .collect();
+
+        if errors.is_empty() {
+            return None;
+        }
+
+        let combined_data = errors
+            .iter()
+            .map(|e| e.data.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let max_severity = errors.iter().map(|e| e.severity).max().unwrap_or(0);
+        Some((combined_data, max_severity))
     }
 
     fn extract_json_output(
@@ -252,6 +268,10 @@ impl P4 {
 
     pub fn shelve(&self) -> Shelve<'_> {
         Shelve::new(self)
+    }
+
+    pub fn print(&self) -> Print<'_> {
+        Print::new(self)
     }
 }
 

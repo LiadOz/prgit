@@ -580,7 +580,11 @@ fn test_reopen() {
         .run()
         .expect("Failed to reopen");
     assert_eq!(reopen_result.len(), 2);
-    assert!(reopen_result[0].change.as_ref().unwrap().contains(&cl2.to_string()));
+    assert!(reopen_result[0]
+        .change
+        .as_ref()
+        .unwrap()
+        .contains(&cl2.to_string()));
 
     let opened = test_client
         .p4
@@ -690,48 +694,110 @@ fn test_describe() {
     fs::write(&file3, "delete").expect("Failed to write file3");
     fs::write(&file4, "move").expect("Failed to write file4");
 
-    let add_cl = test_client.p4.change()
+    let add_cl = test_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Add files"))
-        .run().expect("Failed to create add change");
-    test_client.p4.add(&[
-        file1.to_str().unwrap(),
-        file2.to_str().unwrap(),
-        file3.to_str().unwrap(),
-        file4.to_str().unwrap(),
-    ]).changelist(add_cl).run().expect("Failed to add files");
-    test_client.p4.submit(add_cl).run().expect("Failed to submit add");
+        .run()
+        .expect("Failed to create add change");
+    test_client
+        .p4
+        .add(&[
+            file1.to_str().unwrap(),
+            file2.to_str().unwrap(),
+            file3.to_str().unwrap(),
+            file4.to_str().unwrap(),
+        ])
+        .changelist(add_cl)
+        .run()
+        .expect("Failed to add files");
+    let add_submitted = test_client
+        .p4
+        .submit(add_cl)
+        .run()
+        .expect("Failed to submit add");
 
-    let add_desc = test_client.p4.describe(&[add_cl]).short().run().expect("Failed to describe add");
+    let add_desc = test_client
+        .p4
+        .describe(&[add_submitted.change])
+        .short()
+        .run()
+        .expect("Failed to describe add");
     assert_eq!(add_desc.len(), 1);
     assert_eq!(add_desc[0].files.len(), 4);
-    assert!(add_desc[0].files.iter().all(|f| f.action == FileAction::Add));
+    assert!(add_desc[0]
+        .files
+        .iter()
+        .all(|f| f.action == FileAction::Add));
 
-    let edit_cl = test_client.p4.change()
+    let edit_cl = test_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Edit file"))
-        .run().expect("Failed to create edit change");
-    test_client.p4.edit(&[file2.to_str().unwrap()]).changelist(edit_cl).run().expect("Failed to edit");
+        .run()
+        .expect("Failed to create edit change");
+    test_client
+        .p4
+        .edit(&[file2.to_str().unwrap()])
+        .changelist(edit_cl)
+        .run()
+        .expect("Failed to edit");
     fs::write(&file2, "edited content").expect("Failed to update file2");
-    test_client.p4.submit(edit_cl).run().expect("Failed to submit edit");
+    let edit_submitted = test_client
+        .p4
+        .submit(edit_cl)
+        .run()
+        .expect("Failed to submit edit");
 
-    let edit_desc = test_client.p4.describe(&[edit_cl]).short().run().expect("Failed to describe edit");
+    let edit_desc = test_client
+        .p4
+        .describe(&[edit_submitted.change])
+        .short()
+        .run()
+        .expect("Failed to describe edit");
     assert_eq!(edit_desc[0].files.len(), 1);
     assert_eq!(edit_desc[0].files[0].action, FileAction::Edit);
 
-    let delete_cl = test_client.p4.change()
+    let delete_cl = test_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Delete file"))
-        .run().expect("Failed to create delete change");
-    test_client.p4.delete(&[file3.to_str().unwrap()]).changelist(delete_cl).run().expect("Failed to delete");
-    test_client.p4.submit(delete_cl).run().expect("Failed to submit delete");
+        .run()
+        .expect("Failed to create delete change");
+    test_client
+        .p4
+        .delete(&[file3.to_str().unwrap()])
+        .changelist(delete_cl)
+        .run()
+        .expect("Failed to delete");
+    let delete_submitted = test_client
+        .p4
+        .submit(delete_cl)
+        .run()
+        .expect("Failed to submit delete");
 
-    let delete_desc = test_client.p4.describe(&[delete_cl]).short().run().expect("Failed to describe delete");
+    let delete_desc = test_client
+        .p4
+        .describe(&[delete_submitted.change])
+        .short()
+        .run()
+        .expect("Failed to describe delete");
     assert_eq!(delete_desc[0].files.len(), 1);
     assert_eq!(delete_desc[0].files[0].action, FileAction::Delete);
 
-    let move_cl = test_client.p4.change()
+    let move_cl = test_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Move file"))
-        .run().expect("Failed to create move change");
+        .run()
+        .expect("Failed to create move change");
     let file4_dest = test_client.client_root().join("describe_move_dst.txt");
-    test_client.p4.edit(&[file4.to_str().unwrap()]).changelist(move_cl).run().expect("Failed to edit for move");
+    test_client
+        .p4
+        .edit(&[file4.to_str().unwrap()])
+        .changelist(move_cl)
+        .run()
+        .expect("Failed to edit for move");
     std::process::Command::new("p4")
         .args(["-p", &format!("localhost:{}", SERVER.port)])
         .args(["-c", &test_client.client_name])
@@ -740,13 +806,165 @@ fn test_describe() {
         .arg(file4_dest.to_str().unwrap())
         .output()
         .expect("Failed to move");
-    test_client.p4.submit(move_cl).run().expect("Failed to submit move");
+    let move_submitted = test_client
+        .p4
+        .submit(move_cl)
+        .run()
+        .expect("Failed to submit move");
 
-    let move_desc = test_client.p4.describe(&[move_cl]).short().run().expect("Failed to describe move");
+    let move_desc = test_client
+        .p4
+        .describe(&[move_submitted.change])
+        .short()
+        .run()
+        .expect("Failed to describe move");
     assert_eq!(move_desc[0].files.len(), 2);
-    assert!(move_desc[0].files.iter().any(|f| f.action == FileAction::MoveDelete));
-    assert!(move_desc[0].files.iter().any(|f| f.action == FileAction::MoveAdd));
+    assert!(move_desc[0]
+        .files
+        .iter()
+        .any(|f| f.action == FileAction::MoveDelete));
+    assert!(move_desc[0]
+        .files
+        .iter()
+        .any(|f| f.action == FileAction::MoveAdd));
 
-    let multi_desc = test_client.p4.describe(&[add_cl, edit_cl]).short().run().expect("Failed to describe multiple");
+    let multi_desc = test_client
+        .p4
+        .describe(&[add_submitted.change, edit_submitted.change])
+        .short()
+        .run()
+        .expect("Failed to describe multiple");
     assert_eq!(multi_desc.len(), 2);
+}
+
+#[test]
+fn test_print_content() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("print_test.txt");
+    let content = "Hello, this is test content for print command.\nLine 2.\nLine 3.";
+    fs::write(&file_path, content).expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Print test"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add");
+    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    // Test basic print content
+    let results = test_client
+        .p4
+        .print()
+        .content(&[&format!("//...@={}", submitted.change)])
+        .run()
+        .expect("Failed to print");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].data, content);
+    assert_eq!(results[0].info.rev, 1);
+
+    // Test print with offset and size
+    let partial = test_client
+        .p4
+        .print()
+        .content(&[&format!("//...@={}", submitted.change)])
+        .offset(7)
+        .size(4)
+        .run()
+        .expect("Failed to print with offset/size");
+    assert_eq!(partial.len(), 1);
+    assert_eq!(partial[0].data, "this");
+}
+
+#[test]
+fn test_print_to_file() {
+    let test_client = SERVER.test_client();
+    let file1 = test_client.client_root().join("print_file1.txt");
+    let file2 = test_client.client_root().join("print_file2.txt");
+    fs::write(&file1, "File 1 content").expect("Failed to write file1");
+    fs::write(&file2, "File 2 content").expect("Failed to write file2");
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Print to file test"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .add(&[file1.to_str().unwrap(), file2.to_str().unwrap()])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add");
+    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    // Create output directory
+    let output_dir = test_client.client_root().join("print_output");
+    fs::create_dir_all(&output_dir).expect("Failed to create output dir");
+
+    // Test print to file - print specific files to specific locations
+    let output_file1 = output_dir.join("out1.txt");
+    let depot_file1 = format!(
+        "//depot/{}/print_file1.txt@={}",
+        test_client.client_name, submitted.change
+    );
+    let results = test_client
+        .p4
+        .print()
+        .to_file(&[&depot_file1], output_file1.to_str().unwrap())
+        .run()
+        .expect("Failed to print to file");
+    assert_eq!(results.len(), 1);
+    assert!(results[0].depot_file.contains("print_file1.txt"));
+
+    // Verify file was written
+    let written_content = fs::read_to_string(&output_file1).expect("Failed to read output file");
+    assert_eq!(written_content, "File 1 content");
+}
+
+#[test]
+fn test_print_to_file_unmapped_path() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("print_unmapped.txt");
+    fs::write(&file_path, "Unmapped test").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Print unmapped test"))
+        .run()
+        .expect("Failed to create change");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add");
+    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+
+    // Test print to file with @= syntax (no depot path prefix) - fails to map
+    let output_pattern = "./nonexistent_output/...";
+    let result = test_client
+        .p4
+        .print()
+        .to_file(&[&format!("@={}", submitted.change)], output_pattern)
+        .run();
+
+    // Should fail with an error about mapping
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    let err_str = format!("{:?}", err);
+    assert!(
+        err_str.contains("map"),
+        "Expected mapping error, got: {}",
+        err_str
+    );
 }

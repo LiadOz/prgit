@@ -63,7 +63,10 @@ impl<'a> NumberedFields<'a> {
     }
 
     pub fn at(&self, index: usize) -> IndexedField<'_> {
-        IndexedField { map: self.map, index }
+        IndexedField {
+            map: self.map,
+            index,
+        }
     }
 
     pub fn map_each<T, F>(&self, primary_prefix: &str, f: F) -> Vec<T>
@@ -107,8 +110,7 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     let ts: i64 = s.parse().map_err(serde::de::Error::custom)?;
-    DateTime::from_timestamp(ts, 0)
-        .ok_or_else(|| serde::de::Error::custom("invalid timestamp"))
+    DateTime::from_timestamp(ts, 0).ok_or_else(|| serde::de::Error::custom("invalid timestamp"))
 }
 
 pub fn deserialize_optional_rev<'de, D>(deserializer: D) -> Result<Option<usize>, D::Error>
@@ -285,6 +287,43 @@ impl std::fmt::Display for ChangeStatus {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineEnding {
+    Local,
+    Unix,
+    Mac,
+    Win,
+    Share,
+}
+
+impl std::fmt::Display for LineEnding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            LineEnding::Local => "local",
+            LineEnding::Unix => "unix",
+            LineEnding::Mac => "mac",
+            LineEnding::Win => "win",
+            LineEnding::Share => "share",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::str::FromStr for LineEnding {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "local" => Ok(LineEnding::Local),
+            "unix" => Ok(LineEnding::Unix),
+            "mac" => Ok(LineEnding::Mac),
+            "win" => Ok(LineEnding::Win),
+            "share" => Ok(LineEnding::Share),
+            _ => Err(format!("Unknown LineEnding: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileAction {
@@ -390,8 +429,14 @@ mod tests {
         assert_eq!("add".parse::<FileAction>().unwrap(), FileAction::Add);
         assert_eq!("edit".parse::<FileAction>().unwrap(), FileAction::Edit);
         assert_eq!("delete".parse::<FileAction>().unwrap(), FileAction::Delete);
-        assert_eq!("move/add".parse::<FileAction>().unwrap(), FileAction::MoveAdd);
-        assert_eq!("move/delete".parse::<FileAction>().unwrap(), FileAction::MoveDelete);
+        assert_eq!(
+            "move/add".parse::<FileAction>().unwrap(),
+            FileAction::MoveAdd
+        );
+        assert_eq!(
+            "move/delete".parse::<FileAction>().unwrap(),
+            FileAction::MoveDelete
+        );
     }
 
     #[test]
@@ -459,9 +504,8 @@ mod tests {
         map.insert("rev1".to_string(), "2".to_string());
 
         let fields = NumberedFields::new(&map);
-        let results: Vec<(String, usize)> = fields.map_each("file", |f| {
-            (f.get("file").unwrap(), f.get("rev").unwrap())
-        });
+        let results: Vec<(String, usize)> =
+            fields.map_each("file", |f| (f.get("file").unwrap(), f.get("rev").unwrap()));
 
         assert_eq!(results.len(), 2);
         assert_eq!(results[0], ("a.txt".to_string(), 1));
@@ -482,9 +526,8 @@ mod tests {
         map.insert("name0".to_string(), "test".to_string());
 
         let fields = NumberedFields::new(&map);
-        let result: Vec<(String, Option<usize>)> = fields.map_each("name", |f| {
-            (f.get("name").unwrap(), f.get("size"))
-        });
+        let result: Vec<(String, Option<usize>)> =
+            fields.map_each("name", |f| (f.get("name").unwrap(), f.get("size")));
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "test");

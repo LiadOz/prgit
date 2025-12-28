@@ -50,4 +50,3 @@ pub struct ReopenResult {
     #[serde(default, rename = "type")]
     pub file_type: Option<String>,
 }
-

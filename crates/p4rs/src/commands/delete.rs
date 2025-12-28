@@ -58,4 +58,3 @@ pub struct DeleteResult {
     #[serde(rename = "type")]
     pub file_type: String,
 }
-

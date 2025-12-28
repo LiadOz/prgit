@@ -7,6 +7,7 @@ pub mod describe;
 pub mod edit;
 pub mod info;
 pub mod opened;
+pub mod print;
 pub mod process;
 pub mod reopen;
 pub mod revert;

@@ -73,4 +73,3 @@ pub struct OpenedFile {
     pub user: String,
     pub client: String,
 }
-
