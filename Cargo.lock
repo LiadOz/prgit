@@ -1353,7 +1353,9 @@ dependencies = [
  "git2",
  "log",
  "p4rs",
+ "tempfile",
  "test-log",
+ "thiserror",
 ]
 
 [[package]]
