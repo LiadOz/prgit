@@ -6,4 +6,6 @@ pub enum MirrorError {
     P4(#[from] p4rs::P4Error),
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
+    #[error("Mirror failed: {0}")]
+    MirrorFailed(String),
 }

@@ -1116,7 +1116,11 @@ fn test_sync_metadata_only() {
         .changelist(cl1)
         .run()
         .expect("Failed to add");
-    test_client.p4.submit(cl1).run().expect("Failed to submit rev 1");
+    test_client
+        .p4
+        .submit(cl1)
+        .run()
+        .expect("Failed to submit rev 1");
 
     // Edit and submit rev 2
     test_client
@@ -1137,7 +1141,11 @@ fn test_sync_metadata_only() {
         .changelist(cl2)
         .run()
         .expect("Failed to reopen");
-    test_client.p4.submit(cl2).run().expect("Failed to submit rev 2");
+    test_client
+        .p4
+        .submit(cl2)
+        .run()
+        .expect("Failed to submit rev 2");
 
     // Verify we're at rev 2
     let rev2_content = fs::read_to_string(&file_path).expect("Failed to read");
@@ -1154,7 +1162,8 @@ fn test_sync_metadata_only() {
     assert_eq!(metadata_results[0].rev, 1);
 
     // File should still have rev 2 content (not overwritten)
-    let after_metadata = fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
+    let after_metadata =
+        fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
     assert_eq!(after_metadata, "revision 2 content");
 
     // Verify have list shows rev 1 by checking opened
@@ -1222,4 +1231,65 @@ fn test_where() {
 
     assert_eq!(results.len(), 1);
     assert!(results[0].depot_file.starts_with("//depot/"));
+}
+
+#[test]
+fn test_print_deleted_file() {
+    let test_client = SERVER.test_client();
+    let file_path = test_client.client_root().join("print_delete_test.txt");
+    fs::write(&file_path, "content to delete").expect("Failed to write file");
+    let file_str = file_path.to_str().unwrap();
+
+    let add_cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add file"))
+        .run()
+        .expect("Failed to create add change");
+    test_client
+        .p4
+        .add(&[file_str])
+        .changelist(add_cl)
+        .run()
+        .expect("Failed to add");
+    test_client
+        .p4
+        .submit(add_cl)
+        .run()
+        .expect("Failed to submit add");
+
+    let delete_cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Delete file"))
+        .run()
+        .expect("Failed to create delete change");
+    test_client
+        .p4
+        .delete(&[file_str])
+        .changelist(delete_cl)
+        .run()
+        .expect("Failed to delete");
+    let delete_submitted = test_client
+        .p4
+        .submit(delete_cl)
+        .run()
+        .expect("Failed to submit delete");
+
+    let output_dir = test_client.client_root().join("print_delete_output");
+    fs::create_dir_all(&output_dir).expect("Failed to create output dir");
+
+    let results = test_client
+        .p4
+        .print()
+        .to_file(
+            &[&format!("//...@={}", delete_submitted.change)],
+            format!("{}/...", output_dir.display()).as_str(),
+        )
+        .run()
+        .expect("Failed to print deleted file");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].action, FileAction::Delete);
+    assert_eq!(results[0].file_size, None);
 }

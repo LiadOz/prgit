@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy)]
 pub enum IntegrateStrategy {
     MergeOurs,
-    Rebase,
+    // Rebase,
 }
 
 #[derive(Debug)]
@@ -17,7 +17,11 @@ pub struct MirrorData {
 }
 
 impl MirrorData {
-    pub fn new(p4_client: String, integrate_strategy: IntegrateStrategy, max_changes_query: Option<usize>) -> Self {
+    pub fn new(
+        p4_client: String,
+        integrate_strategy: IntegrateStrategy,
+        max_changes_query: Option<usize>,
+    ) -> Self {
         Self {
             last_sync_change: 0,
             branch_mapping: HashMap::new(),
@@ -46,5 +50,4 @@ impl MirrorData {
     pub fn set_user_email(&mut self, user: &str, email: String) {
         self.user_mapping.insert(user.to_string(), email);
     }
-
 }

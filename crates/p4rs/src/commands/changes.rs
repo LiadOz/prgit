@@ -77,5 +77,43 @@ pub struct ChangeData {
     #[serde(deserialize_with = "deserialize_unix_timestamp")]
     pub time: DateTime<Utc>,
     pub user: String,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub old_change: Option<usize>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_change_data_deserialize_old_change() {
+        let json = r#"{
+            "change": "123",
+            "changeType": "public",
+            "client": "test-client",
+            "desc": "test",
+            "status": "submitted",
+            "time": "1234567890",
+            "user": "testuser",
+            "oldChange": "456"
+        }"#;
+        let data: ChangeData = serde_json::from_str(json).expect("Failed to deserialize");
+        assert_eq!(data.change, 123);
+        assert_eq!(data.old_change, Some(456));
+    }
+
+    #[test]
+    fn test_change_data_deserialize_no_old_change() {
+        let json = r#"{
+            "change": "123",
+            "changeType": "public",
+            "client": "test-client",
+            "desc": "test",
+            "status": "submitted",
+            "time": "1234567890",
+            "user": "testuser"
+        }"#;
+        let data: ChangeData = serde_json::from_str(json).expect("Failed to deserialize");
+        assert_eq!(data.old_change, None);
+    }
 }

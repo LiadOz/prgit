@@ -17,7 +17,7 @@ impl<'p> User<'p> {
     }
 
     pub fn get<'a>(&self, name: &'a str) -> UserCommand<'p, GetUser<'a>> {
-        UserCommand::new(self.p4, GetUser { name: name })
+        UserCommand::new(self.p4, GetUser { name })
     }
 }
 
@@ -39,7 +39,7 @@ impl<'p, 'a> P4Command for UserCommand<'p, GetUser<'a>> {
     type Response = UserInfo;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.p4.build_cmd("user", CmdType::FormOutput);
-        process.arg(&self.command_specific.name);
+        process.arg(self.command_specific.name);
         let json = self.p4.run(process)?;
         Ok(serde_json::from_value(json)?)
     }

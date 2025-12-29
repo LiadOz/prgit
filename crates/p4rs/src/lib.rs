@@ -1,5 +1,3 @@
-#![deny(clippy::unwrap_used)]
-
 mod commands;
 mod error;
 mod p4;

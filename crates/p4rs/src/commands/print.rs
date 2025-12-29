@@ -172,8 +172,9 @@ pub struct PrintFileInfo {
     pub change: usize,
     #[serde_as(as = "DisplayFromStr")]
     pub rev: usize,
-    #[serde_as(as = "DisplayFromStr")]
-    pub file_size: usize,
+    #[serde(default)]
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub file_size: Option<usize>,
     #[serde(deserialize_with = "deserialize_unix_timestamp")]
     pub time: DateTime<Utc>,
     #[serde(rename = "type")]

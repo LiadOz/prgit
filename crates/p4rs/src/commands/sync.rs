@@ -82,4 +82,3 @@ pub struct SyncResult {
     #[serde_as(as = "DisplayFromStr")]
     pub file_size: usize,
 }
-

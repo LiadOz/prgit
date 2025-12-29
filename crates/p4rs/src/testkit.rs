@@ -17,7 +17,7 @@ impl TestClient {
         let tmp_dir = TempDir::new().expect("Failed to create temp dir");
         let client_spec = ClientSpec::new(
             &test_name,
-            tmp_dir.path().to_str().unwrap(),
+            tmp_dir.path().to_str().expect("Path is not valid UTF-8"),
             vec![ClientMapping::new(
                 format!("//depot/{test_name}/..."),
                 format!("//{test_name}/..."),
@@ -106,7 +106,9 @@ impl P4Server {
             .start()
             .expect("Failed to start P4 server");
 
-        let port = container.get_host_port_ipv4(1666).unwrap();
+        let port = container
+            .get_host_port_ipv4(1666)
+            .expect("Failed to get container port");
         Self {
             port,
             _container: ContainerMode::Managed(Box::new(container)),
@@ -123,4 +125,3 @@ impl P4Server {
 }
 
 pub static SERVER: LazyLock<P4Server> = LazyLock::new(P4Server::start);
-

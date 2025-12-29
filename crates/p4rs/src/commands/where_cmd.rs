@@ -31,4 +31,3 @@ pub struct WhereResult {
     pub client_file: String,
     pub path: String,
 }
-

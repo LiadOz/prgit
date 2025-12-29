@@ -452,11 +452,23 @@ mod tests {
     #[test]
     fn test_base_file_type_from_str() {
         assert_eq!("text".parse::<BaseFileType>().unwrap(), BaseFileType::Text);
-        assert_eq!("binary".parse::<BaseFileType>().unwrap(), BaseFileType::Binary);
-        assert_eq!("symlink".parse::<BaseFileType>().unwrap(), BaseFileType::Symlink);
-        assert_eq!("unicode".parse::<BaseFileType>().unwrap(), BaseFileType::Unicode);
+        assert_eq!(
+            "binary".parse::<BaseFileType>().unwrap(),
+            BaseFileType::Binary
+        );
+        assert_eq!(
+            "symlink".parse::<BaseFileType>().unwrap(),
+            BaseFileType::Symlink
+        );
+        assert_eq!(
+            "unicode".parse::<BaseFileType>().unwrap(),
+            BaseFileType::Unicode
+        );
         assert_eq!("utf8".parse::<BaseFileType>().unwrap(), BaseFileType::Utf8);
-        assert_eq!("utf16".parse::<BaseFileType>().unwrap(), BaseFileType::Utf16);
+        assert_eq!(
+            "utf16".parse::<BaseFileType>().unwrap(),
+            BaseFileType::Utf16
+        );
         assert!("invalid".parse::<BaseFileType>().is_err());
     }
 
@@ -465,8 +477,14 @@ mod tests {
         assert_eq!("text".parse::<FileType>().unwrap(), FileType::text());
         assert_eq!("binary".parse::<FileType>().unwrap(), FileType::binary());
         assert_eq!("symlink".parse::<FileType>().unwrap(), FileType::symlink());
-        assert_eq!("text+w".parse::<FileType>().unwrap(), FileType::text().writable());
-        assert_eq!("binary+x".parse::<FileType>().unwrap(), FileType::binary().executable());
+        assert_eq!(
+            "text+w".parse::<FileType>().unwrap(),
+            FileType::text().writable()
+        );
+        assert_eq!(
+            "binary+x".parse::<FileType>().unwrap(),
+            FileType::binary().executable()
+        );
         assert_eq!(
             "text+w+x+k+l+F+C+D".parse::<FileType>().unwrap(),
             FileType::text()
@@ -478,7 +496,10 @@ mod tests {
                 .compressed()
                 .rcs_deltas()
         );
-        assert_eq!("symlink+l".parse::<FileType>().unwrap(), FileType::symlink().exclusive_lock());
+        assert_eq!(
+            "symlink+l".parse::<FileType>().unwrap(),
+            FileType::symlink().exclusive_lock()
+        );
     }
 
     #[test]
