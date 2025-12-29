@@ -16,6 +16,7 @@ pub mod submit;
 pub mod sync;
 pub mod types;
 pub mod user;
+pub mod where_cmd;
 
 pub(crate) use add::AddCommand;
 pub(crate) use changes::ChangesCommand;

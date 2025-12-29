@@ -5,6 +5,7 @@ use crate::commands::process::{CmdType, P4Process};
 use crate::commands::shelve::Shelve;
 use crate::commands::sync::SyncCommand;
 use crate::commands::user::User;
+use crate::commands::where_cmd::WhereCommand;
 use crate::commands::{
     AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, InfoCommand,
     OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
@@ -283,6 +284,10 @@ impl P4 {
 
     pub fn user(&self) -> User<'_> {
         User::new(self)
+    }
+
+    pub fn where_cmd<'p, 'f>(&'p self, files: &'f [&'f str]) -> WhereCommand<'p, 'f> {
+        WhereCommand::new(self, files)
     }
 }
 

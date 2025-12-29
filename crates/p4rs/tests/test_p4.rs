@@ -600,13 +600,77 @@ fn test_reopen() {
         .run()
         .expect("Failed to reopen with filetype");
     assert_eq!(reopen_type.len(), 1);
-    assert_eq!(reopen_type[0].file_type.as_deref(), Some("binary"));
+    assert_eq!(reopen_type[0].file_type, Some(p4rs::FileType::binary()));
 
     test_client
         .p4
         .revert(&["//..."])
         .run()
         .expect("Failed to revert");
+}
+
+#[test]
+fn test_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let test_client = SERVER.test_client();
+    let target_file = test_client.client_root().join("symlink_target.txt");
+    let link_file = test_client.client_root().join("symlink_link.txt");
+    fs::write(&target_file, "target content").expect("Failed to write target file");
+    symlink(&target_file, &link_file).expect("Failed to create symlink");
+
+    let target_str = target_file.to_str().unwrap();
+    let link_str = link_file.to_str().unwrap();
+
+    let cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Symlink test"))
+        .run()
+        .expect("Failed to create change");
+
+    test_client
+        .p4
+        .add(&[target_str])
+        .changelist(cl)
+        .run()
+        .expect("Failed to add target file");
+
+    let add_result = test_client
+        .p4
+        .add(&[link_str])
+        .changelist(cl)
+        .file_type(p4rs::FileType::symlink())
+        .run()
+        .expect("Failed to add symlink");
+    assert_eq!(add_result.len(), 1);
+    assert_eq!(add_result[0].file_type.base, p4rs::BaseFileType::Symlink);
+
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened");
+    let link_opened = opened
+        .iter()
+        .find(|f| f.client_file.contains("symlink_link"))
+        .unwrap();
+    assert_eq!(link_opened.file_type.base, p4rs::BaseFileType::Symlink);
+
+    let submit = test_client.p4.submit(cl).run().expect("Failed to submit");
+    assert!(submit.change > 0);
+
+    let describe = test_client
+        .p4
+        .describe(&[submit.change])
+        .run()
+        .expect("Failed to describe");
+    let link_desc = describe[0]
+        .files
+        .iter()
+        .find(|f| f.depot_file.contains("symlink_link"))
+        .unwrap();
+    assert_eq!(link_desc.file_type.base, p4rs::BaseFileType::Symlink);
 }
 
 #[test]
@@ -1125,4 +1189,37 @@ fn test_user() {
     assert!(!user_info.user.is_empty());
     assert!(!user_info.email.is_empty());
     assert!(!user_info.full_name.is_empty());
+}
+
+#[test]
+fn test_where() {
+    let test_client = SERVER.test_client();
+    let client_root = test_client.client_root().to_str().unwrap();
+
+    let file1 = test_client.client_root().join("file1.txt");
+    let file2 = test_client.client_root().join("file2.txt");
+    std::fs::write(&file1, "content1").unwrap();
+    std::fs::write(&file2, "content2").unwrap();
+
+    let results = test_client
+        .p4
+        .where_cmd(&[file1.to_str().unwrap(), file2.to_str().unwrap()])
+        .run()
+        .expect("Failed to run where");
+
+    assert_eq!(results.len(), 2);
+    for result in &results {
+        assert!(result.depot_file.starts_with("//depot/"));
+        assert!(result.client_file.starts_with("//"));
+        assert!(result.path.starts_with(client_root));
+    }
+
+    let results = test_client
+        .p4
+        .where_cmd(&["//depot/..."])
+        .run()
+        .expect("Failed to run where with depot path");
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].depot_file.starts_with("//depot/"));
 }

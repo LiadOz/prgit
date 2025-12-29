@@ -1,7 +1,8 @@
 use crate::commands::process::{CmdType, P4Command};
-use crate::commands::types::ChangeStatus;
+use crate::commands::types::{deserialize_unix_timestamp, ChangeStatus};
 use crate::error::P4Error;
 use crate::p4::P4;
+use chrono::{DateTime, Utc};
 use derive_setters::Setters;
 use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
@@ -22,6 +23,8 @@ pub struct ChangesCommand<'p, 'f> {
     status: Option<ChangeStatus>,
     user: Option<String>,
     client: Option<String>,
+    #[setters(bool)]
+    reverse: bool,
 }
 
 impl<'p, 'f> ChangesCommand<'p, 'f> {
@@ -36,6 +39,7 @@ impl<'p, 'f> ChangesCommand<'p, 'f> {
             status: None,
             user: None,
             client: None,
+            reverse: false,
         }
     }
 }
@@ -47,6 +51,7 @@ impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
         process
             .flag(self.include_integrated, "-i")
             .flag(self.long, "-l")
+            .flag(self.reverse, "-r")
             .opt("-e", &self.since_changelist)
             .opt("-m", &self.max_changes)
             .opt("-s", &self.status)
@@ -69,7 +74,8 @@ pub struct ChangeData {
     pub desc: String,
     pub path: Option<String>,
     pub status: ChangeStatus,
-    pub time: String,
+    #[serde(deserialize_with = "deserialize_unix_timestamp")]
+    pub time: DateTime<Utc>,
     pub user: String,
     pub old_change: Option<usize>,
 }

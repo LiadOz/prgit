@@ -1,6 +1,6 @@
 use crate::commands::change::ChangeType;
 use crate::commands::process::{CmdType, P4Command};
-use crate::commands::types::{deserialize_optional_rev, FileAction};
+use crate::commands::types::{deserialize_optional_rev, FileAction, FileType};
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
@@ -69,7 +69,8 @@ pub struct OpenedFile {
     #[serde_as(as = "DisplayFromStr")]
     pub change: ChangeType,
     #[serde(rename = "type")]
-    pub file_type: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub file_type: FileType,
     pub user: String,
     pub client: String,
 }

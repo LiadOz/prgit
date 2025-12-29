@@ -1,8 +1,10 @@
 use crate::commands::process::{CmdType, P4Command};
+use crate::commands::types::FileType;
 use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -48,6 +50,7 @@ impl<'p, 'f> P4Command for DeleteCommand<'p, 'f> {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteResult {
@@ -56,5 +59,6 @@ pub struct DeleteResult {
     pub work_rev: String,
     pub action: String,
     #[serde(rename = "type")]
-    pub file_type: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub file_type: FileType,
 }

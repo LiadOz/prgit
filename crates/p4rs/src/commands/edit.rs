@@ -4,6 +4,7 @@ use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -64,6 +65,7 @@ impl std::fmt::Display for EditAction {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditResult {
@@ -72,7 +74,8 @@ pub struct EditResult {
     pub work_rev: String,
     pub action: EditAction,
     #[serde(rename = "type")]
-    pub file_type: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub file_type: FileType,
 }
 
 #[cfg(test)]

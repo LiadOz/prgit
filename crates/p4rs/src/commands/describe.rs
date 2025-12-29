@@ -1,6 +1,6 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::commands::types::{
-    deserialize_unix_timestamp, ChangeListType, ChangeStatus, FileAction, NumberedFields,
+    deserialize_unix_timestamp, ChangeListType, ChangeStatus, FileAction, FileType, NumberedFields,
 };
 use crate::error::P4Error;
 use crate::p4::P4;
@@ -90,7 +90,7 @@ pub struct DescribeResult {
 pub struct DescribeFile {
     pub depot_file: String,
     pub action: FileAction,
-    pub file_type: String,
+    pub file_type: FileType,
     pub rev: Option<usize>,
     pub file_size: Option<usize>,
     pub digest: Option<String>,
@@ -101,7 +101,7 @@ impl From<DescribeResultRaw> for DescribeResult {
         let files = NumberedFields::new(&raw.extra).map_each("depotFile", |f| DescribeFile {
             depot_file: f.get("depotFile").unwrap_or_default(),
             action: f.get("action").unwrap_or(FileAction::Edit),
-            file_type: f.get("type").unwrap_or_default(),
+            file_type: f.get("type").unwrap_or(FileType::text()),
             rev: f.get("rev"),
             file_size: f.get("fileSize"),
             digest: f.get("digest"),

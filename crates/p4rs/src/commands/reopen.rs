@@ -4,6 +4,7 @@ use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -40,6 +41,7 @@ impl<'p, 'f> P4Command for ReopenCommand<'p, 'f> {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReopenResult {
@@ -48,5 +50,6 @@ pub struct ReopenResult {
     #[serde(default)]
     pub change: Option<String>,
     #[serde(default, rename = "type")]
-    pub file_type: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub file_type: Option<FileType>,
 }

@@ -3,8 +3,8 @@ use crate::error::P4Error;
 use crate::p4::P4;
 use serde::Deserialize;
 
-pub struct GetUser {
-    name: String,
+pub struct GetUser<'a> {
+    name: &'a str,
 }
 
 pub struct User<'p> {
@@ -16,8 +16,8 @@ impl<'p> User<'p> {
         Self { p4 }
     }
 
-    pub fn get(&self, name: impl Into<String>) -> UserCommand<'p, GetUser> {
-        UserCommand::new(self.p4, GetUser { name: name.into() })
+    pub fn get<'a>(&self, name: &'a str) -> UserCommand<'p, GetUser<'a>> {
+        UserCommand::new(self.p4, GetUser { name: name })
     }
 }
 
@@ -35,7 +35,7 @@ impl<'p, T> UserCommand<'p, T> {
     }
 }
 
-impl<'p> P4Command for UserCommand<'p, GetUser> {
+impl<'p, 'a> P4Command for UserCommand<'p, GetUser<'a>> {
     type Response = UserInfo;
     fn run(&self) -> Result<Self::Response, P4Error> {
         let mut process = self.p4.build_cmd("user", CmdType::FormOutput);

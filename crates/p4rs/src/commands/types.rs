@@ -169,9 +169,26 @@ impl std::fmt::Display for BaseFileType {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+impl std::str::FromStr for BaseFileType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "text" => Ok(BaseFileType::Text),
+            "binary" => Ok(BaseFileType::Binary),
+            "symlink" => Ok(BaseFileType::Symlink),
+            "apple" => Ok(BaseFileType::Apple),
+            "resource" => Ok(BaseFileType::Resource),
+            "unicode" => Ok(BaseFileType::Unicode),
+            "utf8" => Ok(BaseFileType::Utf8),
+            "utf16" => Ok(BaseFileType::Utf16),
+            _ => Err(format!("unknown base file type: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileType {
-    pub base: Option<BaseFileType>,
+    pub base: BaseFileType,
     pub writable: bool,
     pub executable: bool,
     pub keyword_expansion: bool,
@@ -184,8 +201,14 @@ pub struct FileType {
 impl FileType {
     pub fn new(base: BaseFileType) -> Self {
         Self {
-            base: Some(base),
-            ..Default::default()
+            base,
+            writable: false,
+            executable: false,
+            keyword_expansion: false,
+            exclusive_lock: false,
+            full_revisions: false,
+            compressed: false,
+            rcs_deltas: false,
         }
     }
 
@@ -240,9 +263,7 @@ impl FileType {
 
 impl std::fmt::Display for FileType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(base) = &self.base {
-            write!(f, "{}", base)?;
-        }
+        write!(f, "{}", self.base)?;
         if self.writable {
             write!(f, "+w")?;
         }
@@ -265,6 +286,28 @@ impl std::fmt::Display for FileType {
             write!(f, "+D")?;
         }
         Ok(())
+    }
+}
+
+impl std::str::FromStr for FileType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('+');
+        let base_str = parts.next().ok_or("empty file type")?;
+        let mut ft = FileType::new(base_str.parse()?);
+        for modifier in parts {
+            match modifier {
+                "w" => ft.writable = true,
+                "x" => ft.executable = true,
+                "k" => ft.keyword_expansion = true,
+                "l" => ft.exclusive_lock = true,
+                "F" => ft.full_revisions = true,
+                "C" => ft.compressed = true,
+                "D" => ft.rcs_deltas = true,
+                _ => {}
+            }
+        }
+        Ok(ft)
     }
 }
 
@@ -404,6 +447,38 @@ mod tests {
             .compressed()
             .rcs_deltas();
         assert_eq!(ft.to_string(), "text+w+x+k+l+F+C+D");
+    }
+
+    #[test]
+    fn test_base_file_type_from_str() {
+        assert_eq!("text".parse::<BaseFileType>().unwrap(), BaseFileType::Text);
+        assert_eq!("binary".parse::<BaseFileType>().unwrap(), BaseFileType::Binary);
+        assert_eq!("symlink".parse::<BaseFileType>().unwrap(), BaseFileType::Symlink);
+        assert_eq!("unicode".parse::<BaseFileType>().unwrap(), BaseFileType::Unicode);
+        assert_eq!("utf8".parse::<BaseFileType>().unwrap(), BaseFileType::Utf8);
+        assert_eq!("utf16".parse::<BaseFileType>().unwrap(), BaseFileType::Utf16);
+        assert!("invalid".parse::<BaseFileType>().is_err());
+    }
+
+    #[test]
+    fn test_file_type_from_str() {
+        assert_eq!("text".parse::<FileType>().unwrap(), FileType::text());
+        assert_eq!("binary".parse::<FileType>().unwrap(), FileType::binary());
+        assert_eq!("symlink".parse::<FileType>().unwrap(), FileType::symlink());
+        assert_eq!("text+w".parse::<FileType>().unwrap(), FileType::text().writable());
+        assert_eq!("binary+x".parse::<FileType>().unwrap(), FileType::binary().executable());
+        assert_eq!(
+            "text+w+x+k+l+F+C+D".parse::<FileType>().unwrap(),
+            FileType::text()
+                .writable()
+                .executable()
+                .keyword_expansion()
+                .exclusive_lock()
+                .full_revisions()
+                .compressed()
+                .rcs_deltas()
+        );
+        assert_eq!("symlink+l".parse::<FileType>().unwrap(), FileType::symlink().exclusive_lock());
     }
 
     #[test]

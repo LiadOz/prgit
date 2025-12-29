@@ -1,5 +1,5 @@
 use crate::commands::process::{CmdType, P4Command};
-use crate::commands::types::{deserialize_unix_timestamp, FileAction, LineEnding};
+use crate::commands::types::{deserialize_unix_timestamp, FileAction, FileType, LineEnding};
 use crate::error::P4Error;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
@@ -177,7 +177,8 @@ pub struct PrintFileInfo {
     #[serde(deserialize_with = "deserialize_unix_timestamp")]
     pub time: DateTime<Utc>,
     #[serde(rename = "type")]
-    pub file_type: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub file_type: FileType,
 }
 
 #[derive(Debug, Deserialize)]
