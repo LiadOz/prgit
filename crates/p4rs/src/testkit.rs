@@ -1,4 +1,6 @@
-use crate::{ChangeStatus, ClientMapping, ClientSpec, P4Command, P4};
+use crate::commands::types::FileType;
+use crate::{ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, P4Command, P4};
+use std::fs;
 use std::sync::LazyLock;
 use tempfile::TempDir;
 use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
@@ -37,6 +39,10 @@ impl TestClient {
     pub fn client_root(&self) -> &std::path::Path {
         self._tmp_dir.path()
     }
+
+    pub fn changelist(&self, description: &str) -> ChangelistBuilder<'_> {
+        ChangelistBuilder::new(self, description)
+    }
 }
 
 impl Drop for TestClient {
@@ -72,6 +78,88 @@ impl Drop for TestClient {
             .delete(&self.client_name)
             .run()
             .expect("Failed to delete client");
+    }
+}
+
+pub struct ChangelistBuilder<'a> {
+    client: &'a TestClient,
+    pub changelist: usize,
+}
+
+impl<'a> ChangelistBuilder<'a> {
+    pub fn new(client: &'a TestClient, description: &str) -> Self {
+        let changelist = client
+            .p4
+            .change()
+            .set(&ChangeSpec::new(ChangeType::New).description(description))
+            .run()
+            .expect("Failed to create changelist");
+        Self { client, changelist }
+    }
+
+    fn resolve_path(&self, path: &str) -> String {
+        self.client
+            .client_root()
+            .join(path)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn write_file(&self, path: &str, content: impl AsRef<[u8]>) {
+        let full_path = self.client.client_root().join(path);
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent).expect("Failed to create parent dirs");
+        }
+        fs::write(full_path, content).expect("Failed to write file");
+    }
+
+    pub fn add_file(&self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> &Self {
+        self.write_file(path, content);
+        let path_str = self.resolve_path(path);
+        let files = [path_str.as_str()];
+        let mut cmd = self.client.p4.add(&files).changelist(self.changelist);
+        if let Some(ft) = file_type {
+            cmd = cmd.file_type(ft);
+        }
+        cmd.run().expect("Failed to add file");
+        self
+    }
+
+    pub fn edit_file(&self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> &Self {
+        let path_str = self.resolve_path(path);
+        let files = [path_str.as_str()];
+        let mut cmd = self.client.p4.edit(&files).changelist(self.changelist);
+        if let Some(ft) = file_type {
+            cmd = cmd.file_type(ft);
+        }
+        cmd.run().expect("Failed to edit file");
+        self.write_file(path, content);
+        self
+    }
+
+    pub fn delete_file(&self, path: &str) -> &Self {
+        let path_str = self.resolve_path(path);
+        let files = [path_str.as_str()];
+        self.client.p4.delete(&files).changelist(self.changelist).run().expect("Failed to delete file");
+        self
+    }
+
+    pub fn move_file(&self, from: &str, to: &str, content: Option<&[u8]>, file_type: Option<FileType>) -> &Self {
+        let from_str = self.resolve_path(from);
+        let to_str = self.resolve_path(to);
+        let mut cmd = self.client.p4.move_file(&from_str, &to_str).changelist(self.changelist);
+        if let Some(ft) = file_type {
+            cmd = cmd.file_type(ft);
+        }
+        cmd.run().expect("Failed to move file");
+        if let Some(c) = content {
+            self.write_file(to, c);
+        }
+        self
+    }
+
+    pub fn submit(self) -> usize {
+        self.client.p4.submit(self.changelist).run().expect("Failed to submit").change
     }
 }
 

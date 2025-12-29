@@ -8,13 +8,13 @@ use crate::commands::user::User;
 use crate::commands::where_cmd::WhereCommand;
 use crate::commands::{
     AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, InfoCommand,
-    OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
+    MoveCommand, OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
 };
 use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
 use std::path::PathBuf;
 
-#[derive(Setters)]
+#[derive(Setters, Clone)]
 #[setters(into, strip_option)]
 pub struct P4 {
     p4_path: PathBuf,
@@ -248,6 +248,10 @@ impl P4 {
 
     pub fn edit<'p, 'f>(&'p self, files: &'f [&'f str]) -> EditCommand<'p, 'f> {
         EditCommand::new(self, files)
+    }
+
+    pub fn move_file<'p>(&'p self, from: &'p str, to: &'p str) -> MoveCommand<'p> {
+        MoveCommand::new(self, from, to)
     }
 
     pub fn opened<'p, 'f>(&'p self, files: &'f [&'f str]) -> OpenedCommand<'p, 'f> {

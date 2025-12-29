@@ -14,6 +14,7 @@ pub use commands::delete::DeleteResult;
 pub use commands::describe::{DescribeFile, DescribeResult};
 pub use commands::edit::{EditAction, EditResult};
 pub use commands::info::InfoResponse;
+pub use commands::move_file::MoveResult;
 pub use commands::opened::{OpenAction, OpenedFile};
 pub use commands::print::{PrintFileInfo, PrintResult};
 pub use commands::reopen::ReopenResult;

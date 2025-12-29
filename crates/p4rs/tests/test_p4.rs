@@ -1293,3 +1293,47 @@ fn test_print_deleted_file() {
     assert_eq!(results[0].action, FileAction::Delete);
     assert_eq!(results[0].file_size, None);
 }
+
+#[test]
+fn test_move_file() {
+    let test_client = SERVER.test_client();
+    let cl = test_client.changelist("Add file for move test");
+    cl.add_file("move_source.txt", b"original content", None);
+    cl.submit();
+
+    let move_cl = test_client
+        .p4
+        .change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Move file"))
+        .run()
+        .expect("Failed to create move changelist");
+
+    let source_path = test_client.client_root().join("move_source.txt");
+    let dest_path = test_client.client_root().join("move_dest.txt");
+    let source_str = source_path.to_str().unwrap();
+    let dest_str = dest_path.to_str().unwrap();
+
+    let move_results = test_client
+        .p4
+        .move_file(source_str, dest_str)
+        .changelist(move_cl)
+        .run()
+        .expect("Failed to move file");
+
+    assert_eq!(move_results.len(), 2);
+    let move_delete = move_results.iter().find(|r| r.action == FileAction::MoveDelete);
+    let move_add = move_results.iter().find(|r| r.action == FileAction::MoveAdd);
+    assert!(move_delete.is_some());
+    assert!(move_add.is_some());
+    assert!(move_delete.unwrap().depot_file.ends_with("move_source.txt"));
+    assert!(move_add.unwrap().depot_file.ends_with("move_dest.txt"));
+
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened files");
+    assert_eq!(opened.len(), 2);
+
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+}
