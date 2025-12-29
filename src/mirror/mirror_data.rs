@@ -50,4 +50,8 @@ impl MirrorData {
     pub fn set_user_email(&mut self, user: &str, email: String) {
         self.user_mapping.insert(user.to_string(), email);
     }
+
+    pub fn set_branch_mapping(&mut self, change: usize, branch: String) {
+        self.branch_mapping.insert(change, branch);
+    }
 }

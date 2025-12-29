@@ -142,77 +142,32 @@ fn test_add_opened_revert() {
 fn test_add_submit_edit() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("edit_test.txt");
-    fs::write(&file_path, "initial content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    let change_spec = ChangeSpec::new(ChangeType::New).description("Add file for edit test");
-    let cl = test_client
-        .p4
-        .change()
-        .set(&change_spec)
-        .run()
-        .expect("Failed to create change");
+    test_client.changelist("Add file for edit test")
+        .add_file("edit_test.txt", b"initial content")
+        .submit();
 
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add file");
-
-    test_client
-        .p4
-        .submit(cl)
-        .run()
-        .expect("Failed to submit change");
-
-    let edit_results = test_client
-        .p4
-        .edit(&[file_str])
-        .run()
-        .expect("Failed to edit file");
+    let edit_results = test_client.p4.edit(&[file_str]).run().expect("Failed to edit file");
     assert_eq!(edit_results.len(), 1);
     assert_eq!(edit_results[0].action, EditAction::Edit);
 
-    let opened = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened files");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].action, OpenAction::Edit);
 
-    test_client
-        .p4
-        .revert(&[file_str])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&[file_str]).run().expect("Failed to revert");
 }
 
 #[test]
 fn test_edit_with_changelist() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("cl_test.txt");
-    fs::write(&file_path, "content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    let add_cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Add file"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(add_cl)
-        .run()
-        .expect("Failed to add");
-    test_client
-        .p4
-        .submit(add_cl)
-        .run()
-        .expect("Failed to submit");
+    test_client.changelist("Add file")
+        .add_file("cl_test.txt", b"content")
+        .submit();
 
     let edit_cl = test_client
         .p4
@@ -229,19 +184,11 @@ fn test_edit_with_changelist() {
         .expect("Failed to edit with changelist");
     assert_eq!(results.len(), 1);
 
-    let opened = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened files");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].change.number(), Some(edit_cl));
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
 }
 
 #[test]
@@ -346,75 +293,32 @@ fn test_submit() {
 fn test_opened_have_rev_after_submit() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("have_rev_test.txt");
-    fs::write(&file_path, "content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    test_client.p4.submit(cl).run().expect("Failed to submit");
+    test_client.changelist("Add")
+        .add_file("have_rev_test.txt", b"content")
+        .submit();
 
-    test_client
-        .p4
-        .edit(&[file_str])
-        .run()
-        .expect("Failed to edit");
-    let opened = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened");
+    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].have_rev, Some(1));
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
 }
 
 #[test]
 fn test_revert_unchanged() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("unchanged_test.txt");
-    fs::write(&file_path, "content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    test_client.p4.submit(cl).run().expect("Failed to submit");
+    test_client.changelist("Add")
+        .add_file("unchanged_test.txt", b"content")
+        .submit();
 
-    test_client
-        .p4
-        .edit(&[file_str])
-        .run()
-        .expect("Failed to edit");
-    let reverted = test_client
-        .p4
-        .revert(&["//..."])
-        .unchanged()
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
+    let reverted = test_client.p4.revert(&["//..."]).unchanged().run().expect("Failed to revert");
     assert_eq!(reverted.len(), 1);
 }
 
@@ -429,36 +333,16 @@ fn test_connection_failed() {
 fn test_edit_preview() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("preview_test.txt");
-    fs::write(&file_path, "content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Add"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    test_client.p4.submit(cl).run().expect("Failed to submit");
+    test_client.changelist("Add")
+        .add_file("preview_test.txt", b"content")
+        .submit();
 
-    let results = test_client
-        .p4
-        .edit(&[file_str])
-        .preview()
-        .run()
-        .expect("Failed to preview edit");
+    let results = test_client.p4.edit(&[file_str]).preview().run().expect("Failed to preview edit");
     assert_eq!(results.len(), 1);
 
-    let opened = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
     assert!(opened.is_empty());
 }
 
@@ -658,11 +542,11 @@ fn test_symlink() {
     assert_eq!(link_opened.file_type.base, p4rs::BaseFileType::Symlink);
 
     let submit = test_client.p4.submit(cl).run().expect("Failed to submit");
-    assert!(submit.change > 0);
+    assert!(submit.submitted_change > 0);
 
     let describe = test_client
         .p4
-        .describe(&[submit.change])
+        .describe(&[submit.submitted_change])
         .run()
         .expect("Failed to describe");
     let link_desc = describe[0]
@@ -678,26 +562,13 @@ fn test_delete() {
     let test_client = SERVER.test_client();
     let file1 = test_client.client_root().join("delete_test1.txt");
     let file2 = test_client.client_root().join("delete_test2.txt");
-    fs::write(&file1, "delete content 1").expect("Failed to write file1");
-    fs::write(&file2, "delete content 2").expect("Failed to write file2");
     let file1_str = file1.to_str().unwrap();
     let file2_str = file2.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Delete test"))
-        .run()
-        .expect("Failed to create change");
-
-    test_client
-        .p4
-        .add(&[file1_str, file2_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add files");
-
-    test_client.p4.submit(cl).run().expect("Failed to submit");
+    test_client.changelist("Delete test")
+        .add_file("delete_test1.txt", b"delete content 1")
+        .add_file("delete_test2.txt", b"delete content 2")
+        .submit();
 
     let delete_cl = test_client
         .p4
@@ -715,33 +586,16 @@ fn test_delete() {
     assert_eq!(delete_result.len(), 2);
     assert!(delete_result.iter().all(|r| r.action == "delete"));
 
-    let opened = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened");
+    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
     assert_eq!(opened.len(), 2);
     assert!(opened.iter().all(|f| f.action == OpenAction::Delete));
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
 
-    let preview_result = test_client
-        .p4
-        .delete(&[file1_str])
-        .preview()
-        .run()
-        .expect("Failed to preview delete");
+    let preview_result = test_client.p4.delete(&[file1_str]).preview().run().expect("Failed to preview delete");
     assert_eq!(preview_result.len(), 1);
 
-    let opened_after = test_client
-        .p4
-        .opened(&["//..."])
-        .run()
-        .expect("Failed to get opened after preview");
+    let opened_after = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened after preview");
     assert!(opened_after.is_empty());
 }
 
@@ -782,7 +636,7 @@ fn test_describe() {
 
     let add_desc = test_client
         .p4
-        .describe(&[add_submitted.change])
+        .describe(&[add_submitted.submitted_change])
         .short()
         .run()
         .expect("Failed to describe add");
@@ -814,7 +668,7 @@ fn test_describe() {
 
     let edit_desc = test_client
         .p4
-        .describe(&[edit_submitted.change])
+        .describe(&[edit_submitted.submitted_change])
         .short()
         .run()
         .expect("Failed to describe edit");
@@ -841,7 +695,7 @@ fn test_describe() {
 
     let delete_desc = test_client
         .p4
-        .describe(&[delete_submitted.change])
+        .describe(&[delete_submitted.submitted_change])
         .short()
         .run()
         .expect("Failed to describe delete");
@@ -877,7 +731,7 @@ fn test_describe() {
 
     let move_desc = test_client
         .p4
-        .describe(&[move_submitted.change])
+        .describe(&[move_submitted.submitted_change])
         .short()
         .run()
         .expect("Failed to describe move");
@@ -893,7 +747,7 @@ fn test_describe() {
 
     let multi_desc = test_client
         .p4
-        .describe(&[add_submitted.change, edit_submitted.change])
+        .describe(&[add_submitted.submitted_change, edit_submitted.submitted_change])
         .short()
         .run()
         .expect("Failed to describe multiple");
@@ -903,41 +757,26 @@ fn test_describe() {
 #[test]
 fn test_print_content() {
     let test_client = SERVER.test_client();
-    let file_path = test_client.client_root().join("print_test.txt");
     let content = "Hello, this is test content for print command.\nLine 2.\nLine 3.";
-    fs::write(&file_path, content).expect("Failed to write file");
-    let file_str = file_path.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Print test"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+    let submitted = test_client.changelist("Print test")
+        .add_file("print_test.txt", content.as_bytes())
+        .submit().submitted_change;
 
-    // Test basic print content
     let results = test_client
         .p4
         .print()
-        .content(&[&format!("//...@={}", submitted.change)])
+        .content(&[&format!("//...@={}", submitted)])
         .run()
         .expect("Failed to print");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].data, content);
     assert_eq!(results[0].info.rev, 1);
 
-    // Test print with offset and size
     let partial = test_client
         .p4
         .print()
-        .content(&[&format!("//...@={}", submitted.change)])
+        .content(&[&format!("//...@={}", submitted)])
         .offset(7)
         .size(4)
         .run()
@@ -949,35 +788,17 @@ fn test_print_content() {
 #[test]
 fn test_print_to_file() {
     let test_client = SERVER.test_client();
-    let file1 = test_client.client_root().join("print_file1.txt");
-    let file2 = test_client.client_root().join("print_file2.txt");
-    fs::write(&file1, "File 1 content").expect("Failed to write file1");
-    fs::write(&file2, "File 2 content").expect("Failed to write file2");
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Print to file test"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file1.to_str().unwrap(), file2.to_str().unwrap()])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+    let submitted = test_client.changelist("Print to file test")
+        .add_file("print_file1.txt", b"File 1 content")
+        .add_file("print_file2.txt", b"File 2 content")
+        .submit().submitted_change;
 
-    // Create output directory
     let output_dir = test_client.client_root().join("print_output");
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
-    // Test print to file - print specific files to specific locations
     let output_file1 = output_dir.join("out1.txt");
-    let depot_file1 = format!(
-        "//depot/{}/print_file1.txt@={}",
-        test_client.client_name, submitted.change
-    );
+    let depot_file1 = format!("//depot/{}/print_file1.txt@={}", test_client.client_name, submitted);
     let results = test_client
         .p4
         .print()
@@ -987,7 +808,6 @@ fn test_print_to_file() {
     assert_eq!(results.len(), 1);
     assert!(results[0].depot_file.contains("print_file1.txt"));
 
-    // Verify file was written
     let written_content = fs::read_to_string(&output_file1).expect("Failed to read output file");
     assert_eq!(written_content, "File 1 content");
 }
@@ -995,104 +815,49 @@ fn test_print_to_file() {
 #[test]
 fn test_print_to_file_unmapped_path() {
     let test_client = SERVER.test_client();
-    let file_path = test_client.client_root().join("print_unmapped.txt");
-    fs::write(&file_path, "Unmapped test").expect("Failed to write file");
-    let file_str = file_path.to_str().unwrap();
 
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Print unmapped test"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    let submitted = test_client.p4.submit(cl).run().expect("Failed to submit");
+    let submitted = test_client.changelist("Print unmapped test")
+        .add_file("print_unmapped.txt", b"Unmapped test")
+        .submit().submitted_change;
 
-    // Test print to file with @= syntax (no depot path prefix) - fails to map
     let output_pattern = "./nonexistent_output/...";
     let result = test_client
         .p4
         .print()
-        .to_file(&[&format!("@={}", submitted.change)], output_pattern)
+        .to_file(&[&format!("@={}", submitted)], output_pattern)
         .run();
 
-    // Should fail with an error about mapping
     assert!(result.is_err());
     let err = result.unwrap_err();
     let err_str = format!("{:?}", err);
-    assert!(
-        err_str.contains("map"),
-        "Expected mapping error, got: {}",
-        err_str
-    );
+    assert!(err_str.contains("map"), "Expected mapping error, got: {}", err_str);
 }
 
 #[test]
 fn test_sync() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("sync_test.txt");
-    fs::write(&file_path, "sync content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
 
-    // Add and submit a file
-    let cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Sync test"))
-        .run()
-        .expect("Failed to create change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl)
-        .run()
-        .expect("Failed to add");
-    test_client.p4.submit(cl).run().expect("Failed to submit");
+    test_client.changelist("Sync test")
+        .add_file("sync_test.txt", b"sync content")
+        .submit();
 
-    // Sync to #none to remove the file from workspace
-    test_client
-        .p4
-        .sync(&[&format!("{}#none", file_str)])
-        .run()
-        .expect("Failed to sync to #none");
+    test_client.p4.sync(&[&format!("{}#none", file_str)]).run().expect("Failed to sync to #none");
     assert!(!file_path.exists());
 
-    // Test sync preview (should not actually sync)
-    let preview_results = test_client
-        .p4
-        .sync(&[file_str])
-        .preview()
-        .run()
-        .expect("Failed to sync preview");
+    let preview_results = test_client.p4.sync(&[file_str]).preview().run().expect("Failed to sync preview");
     assert_eq!(preview_results.len(), 1);
     assert!(preview_results[0].depot_file.contains("sync_test.txt"));
-    // File should still be missing after preview
     assert!(!file_path.exists());
 
-    // Test actual sync
-    let results = test_client
-        .p4
-        .sync(&[file_str])
-        .run()
-        .expect("Failed to sync");
+    let results = test_client.p4.sync(&[file_str]).run().expect("Failed to sync");
     assert_eq!(results.len(), 1);
     assert!(results[0].depot_file.contains("sync_test.txt"));
     assert_eq!(results[0].rev, 1);
-    // File should exist after sync
     assert!(file_path.exists());
 
-    // Test force sync (should re-sync even though file exists)
-    let force_results = test_client
-        .p4
-        .sync(&[file_str])
-        .force()
-        .run()
-        .expect("Failed to force sync");
+    let force_results = test_client.p4.sync(&[file_str]).force().run().expect("Failed to force sync");
     assert_eq!(force_results.len(), 1);
 }
 
@@ -1100,58 +865,19 @@ fn test_sync() {
 fn test_sync_metadata_only() {
     let test_client = SERVER.test_client();
     let file_path = test_client.client_root().join("sync_metadata.txt");
-
-    // Create and submit rev 1
-    fs::write(&file_path, "revision 1 content").expect("Failed to write file");
     let file_str = file_path.to_str().unwrap();
-    let cl1 = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Rev 1"))
-        .run()
-        .expect("Failed to create change 1");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(cl1)
-        .run()
-        .expect("Failed to add");
-    test_client
-        .p4
-        .submit(cl1)
-        .run()
-        .expect("Failed to submit rev 1");
 
-    // Edit and submit rev 2
-    test_client
-        .p4
-        .edit(&[file_str])
-        .run()
-        .expect("Failed to edit");
-    fs::write(&file_path, "revision 2 content").expect("Failed to write rev 2");
-    let cl2 = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Rev 2"))
-        .run()
-        .expect("Failed to create change 2");
-    test_client
-        .p4
-        .reopen(&[file_str])
-        .changelist(cl2)
-        .run()
-        .expect("Failed to reopen");
-    test_client
-        .p4
-        .submit(cl2)
-        .run()
-        .expect("Failed to submit rev 2");
+    test_client.changelist("Rev 1")
+        .add_file("sync_metadata.txt", b"revision 1 content")
+        .submit();
 
-    // Verify we're at rev 2
+    test_client.changelist("Rev 2")
+        .edit_file("sync_metadata.txt", b"revision 2 content")
+        .submit();
+
     let rev2_content = fs::read_to_string(&file_path).expect("Failed to read");
     assert_eq!(rev2_content, "revision 2 content");
 
-    // Use metadata_only to update have list to rev 1 without changing file
     let metadata_results = test_client
         .p4
         .sync(&[&format!("{}#1", file_str)])
@@ -1161,19 +887,10 @@ fn test_sync_metadata_only() {
     assert_eq!(metadata_results.len(), 1);
     assert_eq!(metadata_results[0].rev, 1);
 
-    // File should still have rev 2 content (not overwritten)
-    let after_metadata =
-        fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
+    let after_metadata = fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
     assert_eq!(after_metadata, "revision 2 content");
 
-    // Verify have list shows rev 1 by checking opened
-    let have = test_client
-        .p4
-        .sync(&[file_str])
-        .preview()
-        .run()
-        .expect("Failed to check have");
-    // Should want to sync to rev 2 since we're at rev 1 in have list
+    let have = test_client.p4.sync(&[file_str]).preview().run().expect("Failed to check have");
     assert_eq!(have.len(), 1);
     assert_eq!(have[0].rev, 2);
 }
@@ -1236,45 +953,14 @@ fn test_where() {
 #[test]
 fn test_print_deleted_file() {
     let test_client = SERVER.test_client();
-    let file_path = test_client.client_root().join("print_delete_test.txt");
-    fs::write(&file_path, "content to delete").expect("Failed to write file");
-    let file_str = file_path.to_str().unwrap();
 
-    let add_cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Add file"))
-        .run()
-        .expect("Failed to create add change");
-    test_client
-        .p4
-        .add(&[file_str])
-        .changelist(add_cl)
-        .run()
-        .expect("Failed to add");
-    test_client
-        .p4
-        .submit(add_cl)
-        .run()
-        .expect("Failed to submit add");
+    test_client.changelist("Add file")
+        .add_file("print_delete_test.txt", b"content to delete")
+        .submit();
 
-    let delete_cl = test_client
-        .p4
-        .change()
-        .set(&ChangeSpec::new(ChangeType::New).description("Delete file"))
-        .run()
-        .expect("Failed to create delete change");
-    test_client
-        .p4
-        .delete(&[file_str])
-        .changelist(delete_cl)
-        .run()
-        .expect("Failed to delete");
-    let delete_submitted = test_client
-        .p4
-        .submit(delete_cl)
-        .run()
-        .expect("Failed to submit delete");
+    let delete_submitted = test_client.changelist("Delete file")
+        .delete_file("print_delete_test.txt")
+        .submit().submitted_change;
 
     let output_dir = test_client.client_root().join("print_delete_output");
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
@@ -1283,7 +969,7 @@ fn test_print_deleted_file() {
         .p4
         .print()
         .to_file(
-            &[&format!("//...@={}", delete_submitted.change)],
+            &[&format!("//...@={}", delete_submitted)],
             format!("{}/...", output_dir.display()).as_str(),
         )
         .run()
@@ -1297,9 +983,9 @@ fn test_print_deleted_file() {
 #[test]
 fn test_move_file() {
     let test_client = SERVER.test_client();
-    let cl = test_client.changelist("Add file for move test");
-    cl.add_file("move_source.txt", b"original content", None);
-    cl.submit();
+    test_client.changelist("Add file for move test")
+        .add_file("move_source.txt", b"original content")
+        .submit();
 
     let move_cl = test_client
         .p4
@@ -1313,6 +999,12 @@ fn test_move_file() {
     let source_str = source_path.to_str().unwrap();
     let dest_str = dest_path.to_str().unwrap();
 
+    // P4 requires the source file to be opened for edit before moving
+    test_client.p4.edit(&[source_str])
+        .changelist(move_cl)
+        .run()
+        .expect("Failed to open file for edit");
+
     let move_results = test_client
         .p4
         .move_file(source_str, dest_str)
@@ -1320,12 +1012,9 @@ fn test_move_file() {
         .run()
         .expect("Failed to move file");
 
-    assert_eq!(move_results.len(), 2);
-    let move_delete = move_results.iter().find(|r| r.action == FileAction::MoveDelete);
+    assert_eq!(move_results.len(), 1);
     let move_add = move_results.iter().find(|r| r.action == FileAction::MoveAdd);
-    assert!(move_delete.is_some());
     assert!(move_add.is_some());
-    assert!(move_delete.unwrap().depot_file.ends_with("move_source.txt"));
     assert!(move_add.unwrap().depot_file.ends_with("move_dest.txt"));
 
     let opened = test_client

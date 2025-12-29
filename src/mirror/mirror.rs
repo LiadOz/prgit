@@ -33,6 +33,10 @@ impl Mirror {
         Ok(())
     }
 
+    pub fn last_sync_change(&self) -> usize {
+        self.mirror_data.last_sync_change()
+    }
+
     fn fetch_changes(&mut self) -> Result<Vec<ChangeData>, P4Error> {
         let path = format!("//{}/...", self.mirror_data.p4_client);
         let paths: &[&str] = &[path.as_str()];

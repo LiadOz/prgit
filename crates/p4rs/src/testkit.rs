@@ -81,6 +81,23 @@ impl Drop for TestClient {
     }
 }
 
+/// A helper for setting up test changelists without boilerplate.
+///
+/// Use this builder for scaffolding/preconditions where you don't need to
+/// inspect command outputs. For testing specific command behavior and verifying
+/// return values, use the P4 commands directly.
+///
+/// ```ignore
+/// // Builder: just need files to exist
+/// test_client.changelist("Setup")
+///     .add_file("foo.txt", b"content")
+///     .add_file("bar.txt", b"more")
+///     .submit();
+///
+/// // Direct P4 command: testing move behavior
+/// let results = test_client.p4.move_file(from, to).run()?;
+/// assert_eq!(results[0].action, FileAction::MoveAdd);
+/// ```
 pub struct ChangelistBuilder<'a> {
     client: &'a TestClient,
     pub changelist: usize,
@@ -113,7 +130,11 @@ impl<'a> ChangelistBuilder<'a> {
         fs::write(full_path, content).expect("Failed to write file");
     }
 
-    pub fn add_file(&self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> &Self {
+    pub fn add_file(self, path: &str, content: impl AsRef<[u8]>) -> Self {
+        self.add_file_with_opts(path, content, None)
+    }
+
+    pub fn add_file_with_opts(self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> Self {
         self.write_file(path, content);
         let path_str = self.resolve_path(path);
         let files = [path_str.as_str()];
@@ -125,7 +146,11 @@ impl<'a> ChangelistBuilder<'a> {
         self
     }
 
-    pub fn edit_file(&self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> &Self {
+    pub fn edit_file(self, path: &str, content: impl AsRef<[u8]>) -> Self {
+        self.edit_file_with_opts(path, content, None)
+    }
+
+    pub fn edit_file_with_opts(self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> Self {
         let path_str = self.resolve_path(path);
         let files = [path_str.as_str()];
         let mut cmd = self.client.p4.edit(&files).changelist(self.changelist);
@@ -137,16 +162,24 @@ impl<'a> ChangelistBuilder<'a> {
         self
     }
 
-    pub fn delete_file(&self, path: &str) -> &Self {
+    pub fn delete_file(self, path: &str) -> Self {
         let path_str = self.resolve_path(path);
         let files = [path_str.as_str()];
         self.client.p4.delete(&files).changelist(self.changelist).run().expect("Failed to delete file");
         self
     }
 
-    pub fn move_file(&self, from: &str, to: &str, content: Option<&[u8]>, file_type: Option<FileType>) -> &Self {
+    pub fn move_file(self, from: &str, to: &str) -> Self {
+        self.move_file_with_opts(from, to, None, None)
+    }
+
+    pub fn move_file_with_opts(self, from: &str, to: &str, content: Option<&[u8]>, file_type: Option<FileType>) -> Self {
         let from_str = self.resolve_path(from);
         let to_str = self.resolve_path(to);
+        // P4 requires the source file to be opened for edit before moving
+        self.client.p4.edit(&[from_str.as_str()])
+            .changelist(self.changelist)
+            .run().expect("Failed to open file for edit before move");
         let mut cmd = self.client.p4.move_file(&from_str, &to_str).changelist(self.changelist);
         if let Some(ft) = file_type {
             cmd = cmd.file_type(ft);
@@ -158,8 +191,8 @@ impl<'a> ChangelistBuilder<'a> {
         self
     }
 
-    pub fn submit(self) -> usize {
-        self.client.p4.submit(self.changelist).run().expect("Failed to submit").change
+    pub fn submit(self) -> crate::commands::submit::SubmitResult {
+        self.client.p4.submit(self.changelist).run().expect("Failed to submit")
     }
 }
 

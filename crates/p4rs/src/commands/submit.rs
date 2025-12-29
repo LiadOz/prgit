@@ -38,6 +38,5 @@ impl<'p> P4Command for SubmitCommand<'p> {
 #[serde(rename_all = "camelCase")]
 pub struct SubmitResult {
     #[serde_as(as = "DisplayFromStr")]
-    #[serde(rename = "submittedChange")]
-    pub change: usize,
+    pub submitted_change: usize,
 }

@@ -82,13 +82,13 @@ impl<'r> CommitBuilder<'r> {
     }
 
     fn build_tree(&mut self) -> Result<Oid, MirrorError> {
-        if let Some(&parent_oid) = self.parents.first() {
-            let parent = self.repo.find_commit(parent_oid)?;
-            let tree = parent.tree()?;
-            Ok(self.tree_builder.create_updated(self.repo, &tree)?)
-        } else {
-            let empty = self.repo.treebuilder(None)?;
-            Ok(empty.write()?)
-        }
+        let base_tree = match self.parents.first() {
+            Some(&parent_oid) => self.repo.find_commit(parent_oid)?.tree()?,
+            None => {
+                let empty_oid = self.repo.treebuilder(None)?.write()?;
+                self.repo.find_tree(empty_oid)?
+            }
+        };
+        Ok(self.tree_builder.create_updated(self.repo, &base_tree)?)
     }
 }

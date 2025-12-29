@@ -4,7 +4,6 @@ use crate::error::P4Error;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
-use serde_with::{serde_as, DisplayFromStr};
 
 #[derive(Setters)]
 #[setters(into, strip_option)]
@@ -53,15 +52,23 @@ impl<'p> P4Command for MoveCommand<'p> {
     }
 }
 
-#[serde_as]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveResult {
     pub depot_file: String,
     pub client_file: String,
     pub action: FileAction,
-    #[serde(rename = "type")]
-    #[serde_as(as = "DisplayFromStr")]
+    #[serde(rename = "type", deserialize_with = "deserialize_file_type")]
     pub file_type: FileType,
+}
+
+fn deserialize_file_type<'de, D>(deserializer: D) -> Result<FileType, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    // P4 sometimes returns numeric type codes like "000" for move operations.
+    // Default to text when we can't parse the type.
+    Ok(s.and_then(|s| s.parse().ok()).unwrap_or_else(FileType::text))
 }
 
