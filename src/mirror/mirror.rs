@@ -5,14 +5,14 @@ use super::commit_builder::CommitBuilder;
 use super::error::MirrorError;
 use super::mirror_data::{IntegrateStrategy, MirrorData};
 
-pub struct Mirror {
+pub struct Mirror<M: MirrorData> {
     p4: P4,
     repo: Repository,
-    mirror_data: MirrorData,
+    mirror_data: M,
 }
 
-impl Mirror {
-    pub fn new(p4: P4, repo: Repository, mirror_data: MirrorData) -> Self {
+impl<M: MirrorData> Mirror<M> {
+    pub fn new(p4: P4, repo: Repository, mirror_data: M) -> Self {
         Self {
             p4,
             repo,
@@ -38,14 +38,14 @@ impl Mirror {
     }
 
     fn fetch_changes(&mut self) -> Result<Vec<ChangeData>, P4Error> {
-        let path = format!("//{}/...", self.mirror_data.p4_client);
+        let path = format!("//{}/...", self.mirror_data.p4_client());
         let paths: &[&str] = &[path.as_str()];
         let mut cmd = self
             .p4
             .changes(paths)
             .since_changelist(self.mirror_data.last_sync_change() + 1)
             .reverse();
-        if let Some(max) = self.mirror_data.max_changes_query {
+        if let Some(max) = self.mirror_data.max_changes_query() {
             cmd = cmd.max_changes(max);
         }
         Ok(cmd.run()?)
@@ -60,11 +60,11 @@ impl Mirror {
     }
 
     fn fetch_change_context(&mut self, change: &ChangeData) -> Result<ChangeContext, MirrorError> {
-        let email = self.resolve_user_email(&change.user)?;
+        let email = self.resolve_user_email(&change.user).unwrap_or("unknown".to_string());
         let temp_dir = tempfile::tempdir().map_err(|e| {
             MirrorError::MirrorFailed(format!("Failed to create temporary directory: {}", e))
         })?;
-        let client_path = format!("//{}/...", self.mirror_data.p4_client);
+        let client_path = format!("//{}/...", self.mirror_data.p4_client());
         let file_spec = format!("{}@={}", client_path, change.change);
 
         let file_data = self
@@ -93,11 +93,10 @@ impl Mirror {
 
     fn resolve_user_email(&mut self, user: &str) -> Result<String, MirrorError> {
         if let Some(e) = self.mirror_data.get_user_email(user) {
-            return Ok(e.clone());
+            return Ok(e);
         }
         let user_info = self.p4.user().get(user).run()?;
-        self.mirror_data
-            .set_user_email(user, user_info.email.clone());
+        self.mirror_data.set_user_email(user, &user_info.email);
         Ok(user_info.email)
     }
 
@@ -107,9 +106,9 @@ impl Mirror {
             .mirror_data
             .get_related_branch(change.old_change.unwrap_or(change.change))
         {
-            match self.mirror_data.integrate_strategy {
+            match self.mirror_data.integrate_strategy() {
                 IntegrateStrategy::MergeOurs => {
-                    let result = builder.add_parent_from_ref(branch);
+                    let result = builder.add_parent_from_ref(&branch);
                     if result.is_err() {
                         log::warn!(
                             "Failed to add branch {branch} as a parent {result:?}. skipping..."

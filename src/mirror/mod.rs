@@ -5,4 +5,4 @@ mod mirror_data;
 
 pub use error::MirrorError;
 pub use mirror::Mirror;
-pub use mirror_data::{IntegrateStrategy, MirrorData};
+pub use mirror_data::{HashMapMirrorData, IntegrateStrategy, MirrorData};

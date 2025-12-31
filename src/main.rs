@@ -1,7 +1,8 @@
 use clap::Parser;
 use git2::Repository;
 use p4rs::P4;
-use prgit::mirror::{IntegrateStrategy, Mirror, MirrorData};
+use prgit::db::Database;
+use prgit::mirror::{IntegrateStrategy, Mirror};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -38,7 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let p4 = P4::new().port(&args.port);
-    let mirror_data = MirrorData::new(
+    let db_path = args.repo_path.join("mirror.db"); // TODO: should probably have this in a central directory or something
+    let db = Database::open(db_path.to_str().expect("Invalid db path"))?;
+    let mirror_data = db.mirror_data(
         args.client.clone(),
         IntegrateStrategy::MergeOurs,
         Some(args.max_changes),

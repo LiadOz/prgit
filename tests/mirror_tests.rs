@@ -1,7 +1,7 @@
 use git2::Repository;
 use p4rs::testkit::{TestClient, SERVER};
 use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4Command, SubmitResult};
-use prgit::mirror::{IntegrateStrategy, Mirror, MirrorData};
+use prgit::mirror::{HashMapMirrorData, IntegrateStrategy, Mirror, MirrorData};
 use std::collections::HashMap;
 use std::fs;
 use tempfile::TempDir;
@@ -195,7 +195,7 @@ fn test_max_changes_batching() {
         env.commit_file(&format!("file_{}.txt", i), &format!("content {}", i), &format!("Add {}", i));
     }
 
-    let data = MirrorData::new(
+    let data = HashMapMirrorData::new(
         env.p4_client.client_name.clone(),
         IntegrateStrategy::MergeOurs,
         Some(3),
@@ -218,8 +218,8 @@ impl MirrorTestEnv {
         Self { p4_client, git_dir }
     }
 
-    fn mirror(&self) -> Mirror {
-        let data = MirrorData::new(
+    fn mirror(&self) -> Mirror<HashMapMirrorData> {
+        let data = HashMapMirrorData::new(
             self.p4_client.client_name.clone(),
             IntegrateStrategy::MergeOurs,
             None,
@@ -227,7 +227,7 @@ impl MirrorTestEnv {
         Mirror::new(self.p4_client.p4.clone(), self.git_repo_non_bare(), data)
     }
 
-    fn mirror_with_data(&self, data: MirrorData) -> Mirror {
+    fn mirror_with_data(&self, data: HashMapMirrorData) -> Mirror<HashMapMirrorData> {
         Mirror::new(self.p4_client.p4.clone(), self.git_repo_non_bare(), data)
     }
 
@@ -235,8 +235,8 @@ impl MirrorTestEnv {
         Repository::open(self.git_dir.path()).expect("Failed to open git repo")
     }
 
-    fn default_data(&self) -> MirrorData {
-        MirrorData::new(
+    fn default_data(&self) -> HashMapMirrorData {
+        HashMapMirrorData::new(
             self.p4_client.client_name.clone(),
             IntegrateStrategy::MergeOurs,
             None,
