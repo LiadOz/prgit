@@ -5,6 +5,12 @@ use std::path::Path;
 
 use super::error::MirrorError;
 
+pub struct CommitMetadata {
+    pub change: usize,
+    pub old_change: Option<usize>,
+    pub client: String,
+}
+
 pub struct CommitBuilder<'r> {
     repo: &'r Repository,
     tree_builder: TreeUpdateBuilder,
@@ -58,6 +64,7 @@ impl<'r> CommitBuilder<'r> {
         email: &str,
         time: DateTime<Utc>,
         message: &str,
+        metadata: &CommitMetadata,
     ) -> Result<Oid, MirrorError> {
         let signature = Signature::new(author, email, &Time::new(time.timestamp(), 0))?;
         let tree_id = self.build_tree()?;
@@ -78,7 +85,19 @@ impl<'r> CommitBuilder<'r> {
             &tree,
             &parents,
         )?;
+
+        let note_content = Self::format_note(metadata);
+        self.repo.note(&signature, &signature, Some("refs/notes/p4"), oid, &note_content, false)?;
+
         Ok(oid)
+    }
+
+    fn format_note(metadata: &CommitMetadata) -> String {
+        let mut note = format!("P4-Change: {}\nP4-Client: {}", metadata.change, metadata.client);
+        if let Some(old) = metadata.old_change {
+            note.push_str(&format!("\nP4-OldChange: {}", old));
+        }
+        note
     }
 
     fn build_tree(&mut self) -> Result<Oid, MirrorError> {

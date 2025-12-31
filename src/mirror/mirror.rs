@@ -1,7 +1,7 @@
 use git2::{FileMode, Repository};
 use p4rs::{BaseFileType, ChangeData, FileAction, P4Command, P4Error, P4};
 
-use super::commit_builder::CommitBuilder;
+use super::commit_builder::{CommitBuilder, CommitMetadata};
 use super::error::MirrorError;
 use super::mirror_data::{IntegrateStrategy, MirrorData};
 
@@ -143,7 +143,12 @@ impl<M: MirrorData> Mirror<M> {
             }
         }
 
-        let commit_hash = builder.commit(&change.user, &ctx.email, change.time, &change.desc)?;
+        let metadata = CommitMetadata {
+            change: change.change,
+            old_change: change.old_change,
+            client: change.client.clone(),
+        };
+        let commit_hash = builder.commit(&change.user, &ctx.email, change.time, &change.desc, &metadata)?;
         log::debug!("Committed change {change:?} with hash {commit_hash}");
         Ok(())
     }
