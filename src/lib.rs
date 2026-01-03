@@ -1,3 +1,4 @@
 #![deny(clippy::unwrap_used)]
-pub mod db;
+pub mod cabinet;
 pub mod mirror;
+pub mod shelf;

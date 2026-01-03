@@ -5,6 +5,20 @@ pub enum IntegrateStrategy {
     MergeOurs,
 }
 
+impl IntegrateStrategy {
+    pub fn from_db(value: i64) -> Self {
+        match value {
+            _ => Self::MergeOurs,
+        }
+    }
+
+    pub fn to_db(self) -> i64 {
+        match self {
+            Self::MergeOurs => 0,
+        }
+    }
+}
+
 pub trait MirrorData {
     fn last_sync_change(&self) -> usize;
     fn set_last_sync_change(&mut self, change: usize);

@@ -1,9 +1,10 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use git2::Repository;
 use p4rs::P4;
-use prgit::db::Database;
+use prgit::cabinet::Database;
 use prgit::mirror::{IntegrateStrategy, Mirror};
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "prgit")]
@@ -23,6 +24,9 @@ struct Args {
 
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    #[arg(long, default_value = "p4")]
+    p4_path: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,14 +42,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Repository::init_bare(&args.repo_path)?
     };
 
-    let p4 = P4::new().port(&args.port);
-    let db_path = args.repo_path.join("mirror.db"); // TODO: should probably have this in a central directory or something
+    let p4 = P4::new().port(&args.port).p4_path(&args.p4_path);
+    let db_path = args.repo_path.join("mirror.db");
     let db = Database::open(db_path.to_str().expect("Invalid db path"))?;
-    let mirror_data = db.mirror_data(
-        args.client.clone(),
-        IntegrateStrategy::MergeOurs,
-        Some(args.max_changes),
-    );
+
+    let prgit_client = match db.get_prgit_client_by_name(&args.client)? {
+        Some(client) => client,
+        None => {
+            let id = db.create_prgit_client(&args.client, &args.p4_path, &args.port, "")?;
+            db.create_prgit_repo(id, &args.repo_path.to_str().expect("Invalid repo path"), IntegrateStrategy::MergeOurs, Some(args.max_changes))?;
+            db.get_prgit_client(id)?.expect("just created")
+        }
+    };
+
+    let mirror_data = db.mirror_data(prgit_client.id);
 
     log::info!(
         "Starting mirror for client {} from {}",
