@@ -19,6 +19,8 @@ pub struct SyncCommand<'p, 'f> {
     preview: bool,
     #[setters(bool)]
     metadata_only: bool,
+    #[setters(bool)]
+    quiet: bool,
 }
 
 impl<'p, 'f> SyncCommand<'p, 'f> {
@@ -30,6 +32,7 @@ impl<'p, 'f> SyncCommand<'p, 'f> {
             force: false,
             preview: false,
             metadata_only: false,
+            quiet: false,
         }
     }
 }
@@ -43,6 +46,7 @@ impl<'p, 'f> P4Command for SyncCommand<'p, 'f> {
             .flag(self.force, "-f")
             .flag(self.preview, "-n")
             .flag(self.metadata_only, "-k")
+            .flag(self.quiet, "-q")
             .args(self.files);
         let json = self.p4.run_multi_line(process)?;
         Ok(serde_json::from_value(json)?)

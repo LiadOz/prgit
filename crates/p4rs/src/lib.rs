@@ -13,6 +13,7 @@ pub use commands::client::{ClientMapping, ClientSpec};
 pub use commands::delete::DeleteResult;
 pub use commands::describe::{DescribeFile, DescribeResult};
 pub use commands::edit::{EditAction, EditResult};
+pub use commands::files::FileInfo;
 pub use commands::info::InfoResponse;
 pub use commands::move_file::MoveResult;
 pub use commands::opened::{OpenAction, OpenedFile};

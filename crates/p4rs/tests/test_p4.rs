@@ -1026,3 +1026,27 @@ fn test_move_file() {
 
     test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
 }
+
+#[test]
+fn test_files() {
+    let test_client = SERVER.test_client();
+
+    test_client.changelist("Add files for test")
+        .add_file("test_file1.txt", b"content1")
+        .add_file("test_file2.txt", b"content2")
+        .submit();
+
+    let files = test_client
+        .p4
+        .files(&["//..."])
+        .run()
+        .expect("Failed to get files");
+
+    assert!(files.len() >= 2);
+    assert!(files.iter().any(|f| f.depot_file.ends_with("test_file1.txt")));
+    assert!(files.iter().any(|f| f.depot_file.ends_with("test_file2.txt")));
+
+    let file1 = files.iter().find(|f| f.depot_file.ends_with("test_file1.txt")).unwrap();
+    assert_eq!(file1.rev, 1);
+    assert_eq!(file1.action, "add");
+}

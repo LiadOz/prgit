@@ -7,8 +7,8 @@ use crate::commands::sync::SyncCommand;
 use crate::commands::user::User;
 use crate::commands::where_cmd::WhereCommand;
 use crate::commands::{
-    AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, InfoCommand,
-    MoveCommand, OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
+    AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, FilesCommand,
+    InfoCommand, MoveCommand, OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
 };
 use crate::error::{ErrorResponse, P4Error};
 use derive_setters::Setters;
@@ -248,6 +248,10 @@ impl P4 {
 
     pub fn edit<'p, 'f>(&'p self, files: &'f [&'f str]) -> EditCommand<'p, 'f> {
         EditCommand::new(self, files)
+    }
+
+    pub fn files<'p, 'f>(&'p self, files: &'f [&'f str]) -> FilesCommand<'p, 'f> {
+        FilesCommand::new(self, files)
     }
 
     pub fn move_file<'p>(&'p self, from: &'p str, to: &'p str) -> MoveCommand<'p> {
