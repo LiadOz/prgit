@@ -7,7 +7,7 @@ use crate::mirror::IntegrateStrategy;
 
 use super::mirror_data::DBMirrorData;
 use super::tables::{
-    BranchMapping, PrgitClient, PrgitRepo, ShelveClient, ShelveConfig, Table,
+    BranchMapping, CommitChangeMapping, PrgitClient, PrgitRepo, ShelveClient, ShelveConfig, Table,
     UserMapping,
 };
 
@@ -24,6 +24,7 @@ impl Database {
         conn.execute_batch(BranchMapping::SCHEMA)?;
         conn.execute_batch(UserMapping::SCHEMA)?;
         conn.execute_batch(PrgitRepo::SCHEMA)?;
+        conn.execute_batch(CommitChangeMapping::SCHEMA)?;
         Ok(Self { conn })
     }
 

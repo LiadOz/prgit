@@ -71,6 +71,24 @@ impl Table for PrgitRepo {
 }
 
 #[derive(Debug, Clone)]
+pub struct CommitChangeMapping {
+    pub prgit_client_id: u64,
+    pub change: usize,
+    pub commit_hash: String,
+}
+
+impl Table for CommitChangeMapping {
+    const SCHEMA: &'static str = "
+        CREATE TABLE IF NOT EXISTS commit_change_mapping (
+            prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
+            change INTEGER NOT NULL,
+            commit_hash TEXT NOT NULL,
+            PRIMARY KEY (prgit_client_id, change)
+        );
+    ";
+}
+
+#[derive(Debug, Clone)]
 pub struct ShelveConfig {
     pub prgit_client_id: u64,
     pub max_clients: usize,

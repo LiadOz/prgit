@@ -168,6 +168,15 @@ impl P4 {
         Some((combined_data, max_severity))
     }
 
+    fn is_info_message(line: &str) -> bool {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(level) = json.get("level").and_then(|l| l.as_u64()) {
+                return level < 2;
+            }
+        }
+        false
+    }
+
     fn extract_json_output(
         &self,
         output: &std::process::Output,
@@ -179,7 +188,7 @@ impl P4 {
                 String::from_utf8_lossy(&output.stdout)
                     .lines()
                     .map(|line| line.trim())
-                    .filter(|line| !line.is_empty())
+                    .filter(|line| !line.is_empty() && !Self::is_info_message(line))
                     .collect::<Vec<&str>>()
                     .join(",")
             );
