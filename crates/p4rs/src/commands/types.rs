@@ -141,7 +141,7 @@ impl std::fmt::Display for ChangeListType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BaseFileType {
     Text,
@@ -186,7 +186,7 @@ impl std::str::FromStr for BaseFileType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileType {
     pub base: BaseFileType,
     pub writable: bool,
