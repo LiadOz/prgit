@@ -5,10 +5,10 @@ use rusqlite::Connection;
 
 use crate::mirror::IntegrateStrategy;
 
-use super::client_data::ClientData;
+use super::prgit_client::PrgitClient;
 use super::tables::{
-    BranchMapping, CommitChangeMapping, PrgitClient, PrgitRepo, ShelveClient, ShelveConfig, Table,
-    UserMapping,
+    BranchMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo, ShelveClient, ShelveConfig,
+    Table, UserMapping,
 };
 
 pub struct Database {
@@ -18,7 +18,7 @@ pub struct Database {
 impl Database {
     pub fn open(path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
-        conn.execute_batch(PrgitClient::SCHEMA)?;
+        conn.execute_batch(PrgitClientInfo::SCHEMA)?;
         conn.execute_batch(ShelveConfig::SCHEMA)?;
         conn.execute_batch(ShelveClient::SCHEMA)?;
         conn.execute_batch(BranchMapping::SCHEMA)?;
@@ -28,13 +28,13 @@ impl Database {
         Ok(Self { conn })
     }
 
-    pub fn get_prgit_client(&self, id: u64) -> Result<Option<PrgitClient>, rusqlite::Error> {
+    pub fn get_prgit_client_info(&self, id: u64) -> Result<Option<PrgitClientInfo>, rusqlite::Error> {
         self.conn
             .query_row(
                 "SELECT id, client_name, p4_path, p4port, p4user FROM prgit_clients WHERE id = ?1",
                 [id],
                 |row| {
-                    Ok(PrgitClient {
+                    Ok(PrgitClientInfo {
                         id: row.get::<_, i64>(0)? as u64,
                         client_name: row.get(1)?,
                         p4_path: PathBuf::from(row.get::<_, String>(2)?),
@@ -50,16 +50,16 @@ impl Database {
             })
     }
 
-    pub fn get_prgit_client_by_name(
+    pub fn get_prgit_client_info_by_name(
         &self,
         name: &str,
-    ) -> Result<Option<PrgitClient>, rusqlite::Error> {
+    ) -> Result<Option<PrgitClientInfo>, rusqlite::Error> {
         self.conn
             .query_row(
                 "SELECT id, client_name, p4_path, p4port, p4user FROM prgit_clients WHERE client_name = ?1",
                 [name],
                 |row| {
-                    Ok(PrgitClient {
+                    Ok(PrgitClientInfo {
                         id: row.get::<_, i64>(0)? as u64,
                         client_name: row.get(1)?,
                         p4_path: PathBuf::from(row.get::<_, String>(2)?),
@@ -181,7 +181,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn client(&self, id: u64) -> Result<Option<ClientData<'_>>, rusqlite::Error> {
+    pub fn client(&self, id: u64) -> Result<Option<PrgitClient<'_>>, rusqlite::Error> {
         self.conn
             .query_row(
                 "SELECT p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
@@ -190,7 +190,7 @@ impl Database {
                  WHERE p.id = ?1",
                 [id],
                 |row| {
-                    Ok(ClientData::new(
+                    Ok(PrgitClient::new(
                         &self.conn,
                         id,
                         row.get::<_, String>(0)?,
@@ -210,7 +210,7 @@ impl Database {
             })
     }
 
-    pub fn client_by_name(&self, name: &str) -> Result<Option<ClientData<'_>>, rusqlite::Error> {
+    pub fn client_by_name(&self, name: &str) -> Result<Option<PrgitClient<'_>>, rusqlite::Error> {
         self.conn
             .query_row(
                 "SELECT p.id, p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
@@ -219,7 +219,7 @@ impl Database {
                  WHERE p.client_name = ?1",
                 [name],
                 |row| {
-                    Ok(ClientData::new(
+                    Ok(PrgitClient::new(
                         &self.conn,
                         row.get::<_, i64>(0)? as u64,
                         row.get::<_, String>(1)?,
@@ -249,14 +249,14 @@ mod tests {
     }
 
     #[test]
-    fn create_and_get_prgit_client() {
+    fn create_and_get_prgit_client_info() {
         let db = test_db();
         let id = db
             .create_prgit_client("test-client", "/usr/bin/p4", "localhost:1666", "testuser")
             .unwrap();
         assert_eq!(id, 1);
 
-        let client = db.get_prgit_client(id).unwrap().unwrap();
+        let client = db.get_prgit_client_info(id).unwrap().unwrap();
         assert_eq!(client.client_name, "test-client");
         assert_eq!(client.p4_path, PathBuf::from("/usr/bin/p4"));
         assert_eq!(client.p4port, "localhost:1666");
@@ -264,22 +264,22 @@ mod tests {
     }
 
     #[test]
-    fn get_prgit_client_by_name() {
+    fn get_prgit_client_info_by_name() {
         let db = test_db();
         db.create_prgit_client("my-client", "p4", "server:1666", "user")
             .unwrap();
 
-        let client = db.get_prgit_client_by_name("my-client").unwrap().unwrap();
+        let client = db.get_prgit_client_info_by_name("my-client").unwrap().unwrap();
         assert_eq!(client.client_name, "my-client");
 
-        let missing = db.get_prgit_client_by_name("nonexistent").unwrap();
+        let missing = db.get_prgit_client_info_by_name("nonexistent").unwrap();
         assert!(missing.is_none());
     }
 
     #[test]
-    fn get_nonexistent_client_returns_none() {
+    fn get_nonexistent_client_info_returns_none() {
         let db = test_db();
-        let client = db.get_prgit_client(999).unwrap();
+        let client = db.get_prgit_client_info(999).unwrap();
         assert!(client.is_none());
     }
 
@@ -339,8 +339,8 @@ mod tests {
         let id2 = db.create_prgit_client("client2", "p4", "port2", "user2").unwrap();
         assert_ne!(id1, id2);
 
-        let c1 = db.get_prgit_client(id1).unwrap().unwrap();
-        let c2 = db.get_prgit_client(id2).unwrap().unwrap();
+        let c1 = db.get_prgit_client_info(id1).unwrap().unwrap();
+        let c2 = db.get_prgit_client_info(id2).unwrap().unwrap();
         assert_eq!(c1.client_name, "client1");
         assert_eq!(c2.client_name, "client2");
     }

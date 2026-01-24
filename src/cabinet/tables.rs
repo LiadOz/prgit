@@ -8,7 +8,7 @@ pub trait Table {
 }
 
 #[derive(Debug, Clone)]
-pub struct PrgitClient {
+pub struct PrgitClientInfo {
     pub id: u64,
     pub client_name: String,
     pub p4_path: PathBuf,
@@ -16,7 +16,7 @@ pub struct PrgitClient {
     pub p4user: String,
 }
 
-impl Table for PrgitClient {
+impl Table for PrgitClientInfo {
     const SCHEMA: &'static str = "
         CREATE TABLE IF NOT EXISTS prgit_clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

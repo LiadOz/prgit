@@ -6,9 +6,9 @@ use rusqlite::Connection;
 
 use crate::mirror::{IntegrateStrategy, MirrorData};
 
-use super::tables::{PrgitClient, ShelveConfig};
+use super::tables::{PrgitClientInfo, ShelveConfig};
 
-pub struct ClientData<'a> {
+pub struct PrgitClient<'a> {
     conn: &'a Connection,
     pub client_id: u64,
     client_name: String,
@@ -20,7 +20,7 @@ pub struct ClientData<'a> {
     max_changes_query: Option<usize>,
 }
 
-impl<'a> ClientData<'a> {
+impl<'a> PrgitClient<'a> {
     pub(super) fn new(
         conn: &'a Connection,
         client_id: u64,
@@ -45,8 +45,8 @@ impl<'a> ClientData<'a> {
         }
     }
 
-    pub fn info(&self) -> PrgitClient {
-        PrgitClient {
+    pub fn info(&self) -> PrgitClientInfo {
+        PrgitClientInfo {
             id: self.client_id,
             client_name: self.client_name.clone(),
             p4_path: self.p4_path.clone(),
@@ -123,7 +123,7 @@ impl<'a> ClientData<'a> {
     }
 }
 
-impl MirrorData for ClientData<'_> {
+impl MirrorData for PrgitClient<'_> {
     fn last_sync_change(&self) -> usize {
         self.conn
             .query_row(
@@ -181,7 +181,7 @@ mod tests {
     use super::*;
     use crate::cabinet::Database;
 
-    fn setup_client_data() -> (Database, u64) {
+    fn setup_prgit_client() -> (Database, u64) {
         let db = Database::open(":memory:").unwrap();
         let client_id = db
             .create_prgit_client("test-client", "/usr/bin/p4", "localhost:1666", "testuser")
@@ -192,85 +192,85 @@ mod tests {
     }
 
     #[test]
-    fn client_data_info() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        let info = cd.info();
+    fn prgit_client_info() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        let info = client.info();
         assert_eq!(info.client_name, "test-client");
         assert_eq!(info.p4port, "localhost:1666");
     }
 
     #[test]
-    fn client_data_repo_path() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert_eq!(cd.repo_path(), Path::new("/path/to/repo"));
+    fn prgit_client_repo_path() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert_eq!(client.repo_path(), Path::new("/path/to/repo"));
     }
 
     #[test]
-    fn client_data_p4_client() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert_eq!(cd.p4_client(), "test-client");
+    fn prgit_client_p4_client() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert_eq!(client.p4_client(), "test-client");
     }
 
     #[test]
-    fn client_data_integrate_strategy() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert!(matches!(cd.integrate_strategy(), IntegrateStrategy::MergeOurs));
+    fn prgit_client_integrate_strategy() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert!(matches!(client.integrate_strategy(), IntegrateStrategy::MergeOurs));
     }
 
     #[test]
-    fn client_data_max_changes_query() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert_eq!(cd.max_changes_query(), Some(50));
+    fn prgit_client_max_changes_query() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert_eq!(client.max_changes_query(), Some(50));
     }
 
     #[test]
     fn last_sync_change_defaults_to_zero() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert_eq!(cd.last_sync_change(), 0);
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert_eq!(client.last_sync_change(), 0);
     }
 
     #[test]
     fn set_and_get_last_sync_change() {
-        let (db, client_id) = setup_client_data();
-        let mut cd = db.client(client_id).unwrap().unwrap();
-        cd.set_last_sync_change(12345);
-        assert_eq!(cd.last_sync_change(), 12345);
+        let (db, client_id) = setup_prgit_client();
+        let mut client = db.client(client_id).unwrap().unwrap();
+        client.set_last_sync_change(12345);
+        assert_eq!(client.last_sync_change(), 12345);
     }
 
     #[test]
     fn set_and_get_user_email() {
-        let (db, client_id) = setup_client_data();
-        let mut cd = db.client(client_id).unwrap().unwrap();
-        cd.set_user_email("jdoe", "jdoe@example.com");
-        assert_eq!(cd.get_user_email("jdoe"), Some("jdoe@example.com".to_string()));
+        let (db, client_id) = setup_prgit_client();
+        let mut client = db.client(client_id).unwrap().unwrap();
+        client.set_user_email("jdoe", "jdoe@example.com");
+        assert_eq!(client.get_user_email("jdoe"), Some("jdoe@example.com".to_string()));
     }
 
     #[test]
     fn map_and_get_commit_change() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        cd.map_commit_to_change("abc123", 100);
-        assert_eq!(cd.get_commit_for_change(100), Some("abc123".to_string()));
-        assert_eq!(cd.get_change_for_commit("abc123"), Some(100));
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        client.map_commit_to_change("abc123", 100);
+        assert_eq!(client.get_commit_for_change(100), Some("abc123".to_string()));
+        assert_eq!(client.get_change_for_commit("abc123"), Some(100));
     }
 
     #[test]
     fn get_branch_for_change_returns_none() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert!(cd.get_branch_for_change(100).is_none());
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert!(client.get_branch_for_change(100).is_none());
     }
 
     #[test]
     fn shelve_config_returns_none_when_not_set() {
-        let (db, client_id) = setup_client_data();
-        let cd = db.client(client_id).unwrap().unwrap();
-        assert!(cd.shelve_config().is_none());
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert!(client.shelve_config().is_none());
     }
 }
