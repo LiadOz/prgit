@@ -5,7 +5,7 @@ use rusqlite::Connection;
 
 use crate::mirror::IntegrateStrategy;
 
-use super::mirror_data::DBMirrorData;
+use super::client_data::ClientData;
 use super::tables::{
     BranchMapping, CommitChangeMapping, PrgitClient, PrgitRepo, ShelveClient, ShelveConfig, Table,
     UserMapping,
@@ -181,8 +181,62 @@ impl Database {
         Ok(())
     }
 
-    pub fn mirror_data(self, prgit_client_id: u64) -> DBMirrorData {
-        DBMirrorData::new(self.conn, prgit_client_id)
+    pub fn client(&self, id: u64) -> Result<Option<ClientData<'_>>, rusqlite::Error> {
+        self.conn
+            .query_row(
+                "SELECT p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
+                 FROM prgit_clients p
+                 JOIN prgit_repos r ON p.id = r.prgit_client_id
+                 WHERE p.id = ?1",
+                [id],
+                |row| {
+                    Ok(ClientData::new(
+                        &self.conn,
+                        id,
+                        row.get::<_, String>(0)?,
+                        PathBuf::from(row.get::<_, String>(1)?),
+                        row.get(2)?,
+                        row.get(3)?,
+                        PathBuf::from(row.get::<_, String>(4)?),
+                        IntegrateStrategy::from_db(row.get(5)?),
+                        row.get::<_, Option<i64>>(6)?.map(|v| v as usize),
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                _ => Err(e),
+            })
+    }
+
+    pub fn client_by_name(&self, name: &str) -> Result<Option<ClientData<'_>>, rusqlite::Error> {
+        self.conn
+            .query_row(
+                "SELECT p.id, p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
+                 FROM prgit_clients p
+                 JOIN prgit_repos r ON p.id = r.prgit_client_id
+                 WHERE p.client_name = ?1",
+                [name],
+                |row| {
+                    Ok(ClientData::new(
+                        &self.conn,
+                        row.get::<_, i64>(0)? as u64,
+                        row.get::<_, String>(1)?,
+                        PathBuf::from(row.get::<_, String>(2)?),
+                        row.get(3)?,
+                        row.get(4)?,
+                        PathBuf::from(row.get::<_, String>(5)?),
+                        IntegrateStrategy::from_db(row.get(6)?),
+                        row.get::<_, Option<i64>>(7)?.map(|v| v as usize),
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                _ => Err(e),
+            })
     }
 }
 
