@@ -1,7 +1,7 @@
 use crate::commands::types::FileType;
 use crate::{ChangeSpec, ChangeStatus, ChangeType, ClientMapping, ClientSpec, P4Command, P4};
 use std::fs;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 use tempfile::TempDir;
 use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
 
@@ -196,15 +196,12 @@ impl<'a> ChangelistBuilder<'a> {
     }
 }
 
-#[allow(dead_code)]
-enum ContainerMode {
-    External(u16),
-    Managed(Box<testcontainers::Container<GenericImage>>),
-}
+static CONTAINER_ID: Mutex<Option<String>> = Mutex::new(None);
 
 pub struct P4Server {
     pub port: u16,
-    _container: ContainerMode,
+    #[allow(dead_code)]
+    container: Option<testcontainers::Container<GenericImage>>,
 }
 
 impl P4Server {
@@ -214,10 +211,7 @@ impl P4Server {
                 .parse()
                 .expect("P4RS_TEST_PORT must be a valid port number");
             log::info!("Using external P4 server on port {}", port);
-            return Self {
-                port,
-                _container: ContainerMode::External(port),
-            };
+            return Self { port, container: None };
         }
 
         let image = std::env::var("P4RS_TEST_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string());
@@ -227,13 +221,9 @@ impl P4Server {
             .start()
             .expect("Failed to start P4 server");
 
-        let port = container
-            .get_host_port_ipv4(1666)
-            .expect("Failed to get container port");
-        Self {
-            port,
-            _container: ContainerMode::Managed(Box::new(container)),
-        }
+        let port = container.get_host_port_ipv4(1666).expect("Failed to get container port");
+        *CONTAINER_ID.lock().unwrap() = Some(container.id().to_string());
+        Self { port, container: Some(container) }
     }
 
     pub fn p4(&self) -> P4 {
@@ -245,4 +235,14 @@ impl P4Server {
     }
 }
 
-pub static SERVER: LazyLock<P4Server> = LazyLock::new(P4Server::start);
+extern "C" fn cleanup_container() {
+    if let Some(id) = CONTAINER_ID.lock().ok().and_then(|mut g| g.take()) {
+        log::info!("Cleaning up P4 test container {}", id);
+        let _ = std::process::Command::new("docker").args(["rm", "-f", &id]).output();
+    }
+}
+
+pub static SERVER: LazyLock<P4Server> = LazyLock::new(|| {
+    unsafe { libc::atexit(cleanup_container) };
+    P4Server::start()
+});
