@@ -48,7 +48,7 @@ impl<M: MirrorData> Mirror<M> {
         if let Some(max) = self.mirror_data.max_changes_query() {
             cmd = cmd.max_changes(max);
         }
-        Ok(cmd.run()?)
+        Ok(cmd.run()?.results)
     }
 
     fn process_change(&mut self, change: ChangeData) -> Result<(), MirrorError> {
@@ -74,10 +74,12 @@ impl<M: MirrorData> Mirror<M> {
                 &[file_spec.as_str()],
                 format!("{}/...", temp_dir.path().display()).as_str(),
             )
-            .run()?;
+            .run()?
+            .results;
 
         let where_result = self.p4.where_cmd(&[&client_path]).run()?;
         let depot_base = where_result
+            .results
             .first()
             .and_then(|w| w.depot_file.strip_suffix("..."))
             .ok_or_else(|| MirrorError::MirrorFailed("Failed to get client base path".to_string()))?
@@ -95,7 +97,7 @@ impl<M: MirrorData> Mirror<M> {
         if let Some(e) = self.mirror_data.get_user_email(user) {
             return Ok(e);
         }
-        let user_info = self.p4.user().get(user).run()?;
+        let user_info = self.p4.user().get(user).run()?.single()?;
         self.mirror_data.set_user_email(user, &user_info.email);
         Ok(user_info.email)
     }

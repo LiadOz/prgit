@@ -1,6 +1,7 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::commands::types::{deserialize_unix_timestamp, FileAction, FileType, LineEnding};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
 use derive_setters::Setters;
@@ -99,8 +100,8 @@ impl<'p, 'f> PrintCommand<'p, 'f, PrintContent> {
 }
 
 impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintToFile> {
-    type Response = Vec<PrintFileInfo>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = PrintFileInfo;
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("print", CmdType::Query);
         self.build_base_args(&mut process);
         process
@@ -115,13 +116,13 @@ impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintToFile> {
             .filter_map(|line| serde_json::from_str::<PrintFileInfo>(line).ok())
             .collect();
 
-        Ok(results)
+        Ok(P4Output::new(results, vec![]))
     }
 }
 
 impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintContent> {
-    type Response = Vec<PrintResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = PrintResult;
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("print", CmdType::Query);
         self.build_base_args(&mut process);
         process
@@ -137,7 +138,6 @@ impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintContent> {
 
         for line in stdout.lines() {
             if let Ok(info) = serde_json::from_str::<PrintFileInfo>(line) {
-                // Save previous file if any
                 if let Some(prev_info) = current_info.take() {
                     results.push(PrintResult {
                         info: prev_info,
@@ -150,7 +150,6 @@ impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintContent> {
             }
         }
 
-        // Save last file
         if let Some(info) = current_info {
             results.push(PrintResult {
                 info,
@@ -158,7 +157,7 @@ impl<'p, 'f> P4Command for PrintCommand<'p, 'f, PrintContent> {
             });
         }
 
-        Ok(results)
+        Ok(P4Output::new(results, vec![]))
     }
 }
 

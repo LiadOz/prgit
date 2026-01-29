@@ -1,5 +1,6 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -34,8 +35,9 @@ impl<'p, 'f> RevertCommand<'p, 'f> {
 }
 
 impl<'p, 'f> P4Command for RevertCommand<'p, 'f> {
-    type Response = Vec<RevertResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = RevertResult;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("revert", CmdType::Query);
         process
             .opt("-c", &self.changelist)
@@ -43,8 +45,7 @@ impl<'p, 'f> P4Command for RevertCommand<'p, 'f> {
             .flag(self.preview, "-n")
             .flag(self.unchanged, "-a")
             .args(self.files);
-        let json = self.p4.run_multi_line(process)?;
-        Ok(serde_json::from_value(json)?)
+        self.p4.run_parsed(process, true)
     }
 }
 

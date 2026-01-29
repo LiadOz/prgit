@@ -1,6 +1,7 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::commands::types::{FileAction, FileType};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -37,8 +38,9 @@ impl<'p> MoveCommand<'p> {
 }
 
 impl<'p> P4Command for MoveCommand<'p> {
-    type Response = Vec<MoveResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = MoveResult;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("move", CmdType::Query);
         process
             .opt("-c", &self.changelist)
@@ -47,8 +49,7 @@ impl<'p> P4Command for MoveCommand<'p> {
             .flag(self.force, "-f")
             .arg(self.from)
             .arg(self.to);
-        let json = self.p4.run_multi_line(process)?;
-        Ok(serde_json::from_value(json)?)
+        self.p4.run_parsed(process, true)
     }
 }
 

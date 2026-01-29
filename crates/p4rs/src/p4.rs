@@ -10,7 +10,8 @@ use crate::commands::{
     AddCommand, ChangesCommand, DeleteCommand, DescribeCommand, EditCommand, FilesCommand,
     InfoCommand, MoveCommand, OpenedCommand, ReopenCommand, RevertCommand, SubmitCommand,
 };
-use crate::error::{ErrorResponse, P4Error};
+use crate::error::{ErrorResponse, P4Error, P4Message};
+use crate::output::P4Output;
 use derive_setters::Setters;
 use std::path::PathBuf;
 
@@ -128,107 +129,123 @@ impl P4 {
 
             match p4_process.cmd_type {
                 CmdType::FormInput => {
-                    return Err(P4Error::CommandFailed(
-                        String::from_utf8_lossy(&output.stderr).into_owned(),
-                        3,
-                    ));
+                    let msg = P4Message::new(3, 0, String::from_utf8_lossy(&output.stderr).into_owned());
+                    return Err(P4Error::command(vec![msg]));
                 }
                 _ => {
-                    if let Some((data, severity)) = Self::extract_errors(&output.stdout) {
-                        return Err(P4Error::CommandFailed(data, severity));
+                    let messages = Self::extract_messages(&output.stdout);
+                    let errors: Vec<_> = messages.into_iter().filter(|m| m.is_error()).collect();
+                    if !errors.is_empty() {
+                        return Err(P4Error::command(errors));
                     }
                 }
-            }
-        }
-        if p4_process.cmd_type != CmdType::FormInput {
-            if let Some((data, severity)) = Self::extract_errors(&output.stdout) {
-                return Err(P4Error::CommandSpecificError(data, severity));
             }
         }
         Ok(output)
     }
 
-    fn extract_errors(stdout: &[u8]) -> Option<(String, usize)> {
+    fn extract_messages(stdout: &[u8]) -> Vec<P4Message> {
         let stdout_str = String::from_utf8_lossy(stdout);
-        let errors: Vec<ErrorResponse> = stdout_str
+        stdout_str
             .lines()
             .filter_map(|line| serde_json::from_str::<ErrorResponse>(line).ok())
-            .collect();
-
-        if errors.is_empty() {
-            return None;
-        }
-
-        let combined_data = errors
-            .iter()
-            .map(|e| e.data.as_str())
-            .collect::<Vec<_>>()
-            .join("");
-        let max_severity = errors.iter().map(|e| e.severity).max().unwrap_or(0);
-        Some((combined_data, max_severity))
+            .map(|e| P4Message::new(e.severity as u8, e.generic.unwrap_or(0) as u8, e.data))
+            .collect()
     }
 
-    fn is_info_message(line: &str) -> bool {
+
+    fn is_message_line(line: &str) -> bool {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(level) = json.get("level").and_then(|l| l.as_u64()) {
-                return level < 2;
-            }
+            json.get("severity").is_some() || json.get("level").is_some()
+        } else {
+            false
         }
-        false
     }
 
-    fn extract_json_output(
+    fn parse_output_with_messages(
         &self,
         output: &std::process::Output,
         multi_line: bool,
-    ) -> Result<serde_json::Value, P4Error> {
-        if multi_line {
-            let json_array = format!(
-                "[{}]",
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .map(|line| line.trim())
-                    .filter(|line| !line.is_empty() && !Self::is_info_message(line))
-                    .collect::<Vec<&str>>()
-                    .join(",")
-            );
-            Ok(serde_json::from_str(&json_array)?)
-        } else {
-            Ok(serde_json::from_slice(&output.stdout)?)
+    ) -> Result<(serde_json::Value, Vec<P4Message>), P4Error> {
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let mut data_lines = Vec::new();
+        let mut messages = Vec::new();
+
+        for line in stdout_str.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if Self::is_message_line(line) {
+                if let Ok(resp) = serde_json::from_str::<ErrorResponse>(line) {
+                    messages.push(P4Message::new(
+                        resp.severity as u8,
+                        resp.generic.unwrap_or(0) as u8,
+                        resp.data,
+                    ));
+                }
+            } else {
+                data_lines.push(line);
+            }
         }
+
+        let json = if multi_line {
+            let json_array = format!("[{}]", data_lines.join(","));
+            serde_json::from_str(&json_array)?
+        } else if data_lines.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::from_str(data_lines.first().unwrap_or(&"null"))?
+        };
+
+        Ok((json, messages))
+    }
+
+    pub(crate) fn run_parsed<T: serde::de::DeserializeOwned>(
+        &self,
+        p4_process: P4Process,
+        multi_line: bool,
+    ) -> Result<P4Output<T>, P4Error> {
+        let output = self.run_command(p4_process, None)?;
+        let (json, messages) = self.parse_output_with_messages(&output, multi_line)?;
+        
+        let (errors, warnings): (Vec<_>, Vec<_>) = messages.into_iter().partition(|m| m.is_error());
+        
+        if !errors.is_empty() {
+            return Err(P4Error::command_with_partial(errors, json));
+        }
+
+        let results: Vec<T> = if json.is_null() {
+            Vec::new()
+        } else if multi_line {
+            serde_json::from_value(json)?
+        } else {
+            vec![serde_json::from_value(json)?]
+        };
+
+        Ok(P4Output::new(results, warnings))
     }
 
     #[cfg(feature = "extensible")]
     pub fn run(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
-        self.run_inner(p4_process)
+        self.run_json_inner(p4_process, false)
     }
 
     #[cfg(not(feature = "extensible"))]
     pub(crate) fn run(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
-        self.run_inner(p4_process)
+        self.run_json_inner(p4_process, false)
     }
 
-    fn run_inner(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
+    fn run_json_inner(&self, p4_process: P4Process, multi_line: bool) -> Result<serde_json::Value, P4Error> {
         let output = self.run_command(p4_process, None)?;
-        self.extract_json_output(&output, false)
-    }
-
-    #[cfg(feature = "extensible")]
-    pub fn run_multi_line(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
-        self.run_multi_line_inner(p4_process)
-    }
-
-    #[cfg(not(feature = "extensible"))]
-    pub(crate) fn run_multi_line(
-        &self,
-        p4_process: P4Process,
-    ) -> Result<serde_json::Value, P4Error> {
-        self.run_multi_line_inner(p4_process)
-    }
-
-    fn run_multi_line_inner(&self, p4_process: P4Process) -> Result<serde_json::Value, P4Error> {
-        let output = self.run_command(p4_process, None)?;
-        self.extract_json_output(&output, true)
+        let (json, messages) = self.parse_output_with_messages(&output, multi_line)?;
+        
+        let errors: Vec<_> = messages.into_iter().filter(|m| m.is_error()).collect();
+        if !errors.is_empty() {
+            return Err(P4Error::command_with_partial(errors, json));
+        }
+        
+        Ok(json)
     }
 
     pub fn info<'p>(&'p self) -> InfoCommand<'p> {

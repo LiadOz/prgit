@@ -1,4 +1,5 @@
 use crate::error::P4Error;
+use crate::output::P4Output;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Output, Stdio};
@@ -12,7 +13,7 @@ pub enum CmdType {
 
 pub trait P4Command {
     type Response;
-    fn run(&self) -> Result<Self::Response, P4Error>;
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error>;
 }
 
 #[derive(Debug)]

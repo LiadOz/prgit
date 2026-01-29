@@ -110,7 +110,9 @@ impl<'a> ChangelistBuilder<'a> {
             .change()
             .set(&ChangeSpec::new(ChangeType::New).description(description))
             .run()
-            .expect("Failed to create changelist");
+            .expect("Failed to create changelist")
+            .single()
+            .expect("Expected single changelist");
         Self { client, changelist }
     }
 
@@ -192,7 +194,7 @@ impl<'a> ChangelistBuilder<'a> {
     }
 
     pub fn submit(self) -> crate::commands::submit::SubmitResult {
-        self.client.p4.submit(self.changelist).run().expect("Failed to submit")
+        self.client.p4.submit(self.changelist).run().expect("Failed to submit").single().expect("Expected submit result")
     }
 }
 

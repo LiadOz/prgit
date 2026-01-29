@@ -32,11 +32,11 @@ impl ShelveClient {
     fn sync(&self, base_change: usize, files: &[&str]) -> Result<(), P4Error> {
         for file in files {
             let depot_path = format!("//{}/{}@{base_change}", self.client_name, file);
-            if !self.p4.files(&[&depot_path]).run().is_ok() {
+            if self.p4.files(&[&depot_path]).run().is_err() {
                 continue
             }
             match self.p4.sync(&[&depot_path]).run() {
-                Err(P4Error::CommandSpecificError(msg, _)) if msg.contains("file(s) up-to-date") => {},
+                Err(P4Error::Command { ref errors, .. }) if errors.iter().any(|e| e.data.contains("file(s) up-to-date")) => {},
                 Ok(_) => {},
                 Err(e) => return Err(e),
             }
@@ -46,7 +46,7 @@ impl ShelveClient {
 
     fn create_empty_change(&self, description: &str) -> Result<usize, P4Error> {
         let change_spec = ChangeSpec::new(ChangeType::New).description(description);
-        self.p4.change().set(&change_spec).run()
+        self.p4.change().set(&change_spec).run()?.single()
     }
 
     fn determine_file_type(path: &Path) -> std::io::Result<FileType> {
@@ -178,7 +178,7 @@ mod tests {
 
         let changes = [FileChange { path: "new.txt", action: FileAction::Add }];
         let cl = client.run(0, &tmp.path(), &changes, "Add new file", None).unwrap();
-        let shelved = &tc.p4.describe(&[cl]).run().unwrap()[0];
+        let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add new file");
         
         tc.p4.shelve().delete(cl).run().unwrap();
@@ -201,7 +201,7 @@ mod tests {
         let changes = [FileChange { path: "file1.txt", action: FileAction::Edit }];
         let cl = client.run(base, tmp.path(), &changes, "Edit file", None).unwrap();
         
-        let shelved = &tc.p4.describe(&[cl]).run().unwrap()[0];
+        let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Edit file");
         
         tc.p4.shelve().delete(cl).run().unwrap();
@@ -223,7 +223,7 @@ mod tests {
         let changes = [FileChange { path: "file1.txt", action: FileAction::Delete }];
         let cl = client.run(base, tmp.path(), &changes, "Delete file", None).unwrap();
         
-        let shelved = &tc.p4.describe(&[cl]).run().unwrap()[0];
+        let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Delete file");
         
         tc.p4.shelve().delete(cl).run().unwrap();
@@ -249,7 +249,7 @@ mod tests {
         let changes = [FileChange { path: "script.sh", action: FileAction::Add }];
         let cl = client.run(0, tmp.path(), &changes, "Add executable", None).unwrap();
         
-        let shelved = &tc.p4.describe(&[cl]).run().unwrap()[0];
+        let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add executable");
         
         tc.p4.shelve().delete(cl).run().unwrap();
@@ -277,7 +277,7 @@ mod tests {
         ];
         let cl = client.run(base, tmp.path(), &changes, "Multiple changes", None).unwrap();
         
-        let shelved = &tc.p4.describe(&[cl]).run().unwrap()[0];
+        let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Multiple changes");
         
         tc.p4.shelve().delete(cl).run().unwrap();
@@ -327,8 +327,8 @@ mod tests {
         let cl = client.run(base2, tmp.path(), &changes, "Edit from base2", None)
             .expect("Failed to run shelve client");
         
-        let shelved = &tc.p4.describe(&[cl]).shelved().run()
-            .expect("Failed to describe shelved")[0];
+        let shelved = tc.p4.describe(&[cl]).shelved().run()
+            .expect("Failed to describe shelved").single().unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert_eq!(shelved.files[0].rev, Some(2));
         assert!(shelved.files[0].depot_file.ends_with("evolving.txt"));

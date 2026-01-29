@@ -87,7 +87,7 @@ fn test_merge_with_branch_parent() {
 
     let original_cl = env.p4_client.p4.change()
         .set(&ChangeSpec::new(ChangeType::New).description("Merge commit"))
-        .run().expect("Failed to create change");
+        .run().expect("Failed to create change").single().unwrap();
     let file_path = env.p4_client.client_root().join("merged.txt");
     fs::write(&file_path, "merged").expect("Failed to write");
     env.p4_client.p4.add(&[file_path.to_str().unwrap()])
@@ -111,7 +111,7 @@ fn test_merge_missing_branch_skipped() {
 
     let original_cl = env.p4_client.p4.change()
         .set(&ChangeSpec::new(ChangeType::New).description("Merge commit"))
-        .run().expect("Failed to create change");
+        .run().expect("Failed to create change").single().unwrap();
     let file_path = env.p4_client.client_root().join("merged.txt");
     fs::write(&file_path, "merged").expect("Failed to write");
     env.p4_client.p4.add(&[file_path.to_str().unwrap()])
@@ -298,9 +298,11 @@ impl MirrorTestEnv {
             .run()
             .expect("Failed to get where");
         let depot_prefix = where_result
+            .results
             .first()
             .and_then(|w| w.depot_file.strip_suffix("..."))
-            .expect("Failed to get depot prefix");
+            .expect("Failed to get depot prefix")
+            .to_string();
 
         let print_result = self
             .p4_client
@@ -311,11 +313,11 @@ impl MirrorTestEnv {
 
         let mut files = HashMap::new();
         if let Ok(results) = print_result {
-            for file in results {
+            for file in results.results {
                 if file.info.action == FileAction::Delete {
                     continue;
                 }
-                if let Some(rel_path) = file.info.depot_file.strip_prefix(depot_prefix) {
+                if let Some(rel_path) = file.info.depot_file.strip_prefix(&depot_prefix) {
                     files.insert(rel_path.to_string(), file.data.into_bytes());
                 }
             }

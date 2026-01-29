@@ -314,8 +314,8 @@ mod tests {
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver.shelve("feature").unwrap();
 
-        let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap();
-        assert_eq!(described[0].description.trim(), "Add new file");
+        let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
+        assert_eq!(described.description.trim(), "Add new file");
     }
 
     #[test]
@@ -346,8 +346,8 @@ mod tests {
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver.shelve("feature").unwrap();
 
-        let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap();
-        assert_eq!(described[0].description.trim(), "Edit file");
+        let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
+        assert_eq!(described.description.trim(), "Edit file");
     }
 
     #[test]
@@ -513,8 +513,8 @@ mod tests {
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver.shelve("feature").unwrap();
 
-        let described = env.p4_client.p4.describe(&[shelve_cl]).shelved().run().unwrap();
-        let files: Vec<&str> = described[0].files.iter()
+        let described = env.p4_client.p4.describe(&[shelve_cl]).shelved().run().unwrap().single().unwrap();
+        let files: Vec<&str> = described.files.iter()
             .map(|f| f.depot_file.split('/').last().unwrap())
             .collect();
         

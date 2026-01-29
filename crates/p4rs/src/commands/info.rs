@@ -1,5 +1,6 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -21,11 +22,11 @@ impl<'p> InfoCommand<'p> {
 
 impl<'p> P4Command for InfoCommand<'p> {
     type Response = InfoResponse;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("info", CmdType::Query);
         process.flag(self.short, "-s");
-        let json = self.p4.run(process)?;
-        Ok(serde_json::from_value(json)?)
+        self.p4.run_parsed(process, false)
     }
 }
 

@@ -3,6 +3,7 @@ use crate::commands::types::{
     deserialize_unix_timestamp, ChangeListType, ChangeStatus, FileAction, FileType, NumberedFields,
 };
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
 use derive_setters::Setters;
@@ -37,8 +38,9 @@ impl<'p> DescribeCommand<'p> {
 }
 
 impl<'p> P4Command for DescribeCommand<'p> {
-    type Response = Vec<DescribeResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = DescribeResult;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("describe", CmdType::Query);
         process
             .flag(self.short, "-s")
@@ -47,9 +49,11 @@ impl<'p> P4Command for DescribeCommand<'p> {
         for cl in &self.changelists {
             process.arg(cl.to_string());
         }
-        let json = self.p4.run_multi_line(process)?;
-        let raw: Vec<DescribeResultRaw> = serde_json::from_value(json)?;
-        Ok(raw.into_iter().map(Into::into).collect())
+        let output: P4Output<DescribeResultRaw> = self.p4.run_parsed(process, true)?;
+        Ok(P4Output::new(
+            output.results.into_iter().map(Into::into).collect(),
+            output.warnings,
+        ))
     }
 }
 

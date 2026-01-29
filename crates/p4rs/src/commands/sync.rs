@@ -1,5 +1,6 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -38,8 +39,9 @@ impl<'p, 'f> SyncCommand<'p, 'f> {
 }
 
 impl<'p, 'f> P4Command for SyncCommand<'p, 'f> {
-    type Response = Vec<SyncResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = SyncResult;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("sync", CmdType::Query);
         process
             .opt("-m", &self.max_files)
@@ -48,8 +50,7 @@ impl<'p, 'f> P4Command for SyncCommand<'p, 'f> {
             .flag(self.metadata_only, "-k")
             .flag(self.quiet, "-q")
             .args(self.files);
-        let json = self.p4.run_multi_line(process)?;
-        Ok(serde_json::from_value(json)?)
+        self.p4.run_parsed(process, true)
     }
 }
 

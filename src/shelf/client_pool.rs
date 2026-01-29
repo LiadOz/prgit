@@ -134,7 +134,7 @@ impl<'a> ClientPool<'a> {
     }
 
     fn create_p4_client(&self, p4: &P4, client_name: &str, client_root: &PathBuf) -> Result<(), ClientPoolError> {
-        let base_spec = p4.client().get(None).run()?;
+        let base_spec = p4.client().get(None).run()?.single()?;
         let base_client = &self.prgit_client.p4_config.client_name;
         let new_view: Vec<ClientMapping> = base_spec
             .view

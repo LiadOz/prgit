@@ -1,6 +1,7 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
 use crate::commands::types::GenericResponse;
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -83,27 +84,24 @@ impl<'p> ShelveCommand<'p, SetShelve> {
 }
 
 impl<'p> P4Command for ShelveCommand<'p, SetShelve> {
-    type Response = Vec<ShelveResult>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = ShelveResult;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::Query);
         process.flag(self.command_specific.replace, "-r");
         process.arg("-c");
         process.arg(self.command_specific.changelist.to_string());
-        let json = self.p4.run_multi_line(process)?;
-        let response: Vec<ShelveResult> = serde_json::from_value(json)?;
-        Ok(response)
+        self.p4.run_parsed(process, true)
     }
 }
 
 impl<'p> P4Command for ShelveCommand<'p, DeleteShelve> {
     type Response = GenericResponse;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::Query);
         process.arg("-d");
         process.arg("-c");
         process.arg(self.command_specific.changelist.to_string());
-        let json = self.p4.run(process)?;
-        let response: GenericResponse = serde_json::from_value(json)?;
-        Ok(response)
+        self.p4.run_parsed(process, false)
     }
 }

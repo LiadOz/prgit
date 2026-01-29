@@ -1,6 +1,7 @@
 use crate::commands::process::{CmdType, P4Command, P4Process};
 use crate::commands::types::{extract_numbered, GenericResponse, LineEnding};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use derive_setters::Setters;
 use serde::Deserialize;
@@ -69,20 +70,20 @@ impl<'p, T> ClientCommand<'p, T> {
 
 impl<'p, 's> P4Command for ClientCommand<'p, GetClient<'s>> {
     type Response = ClientSpec;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::FormOutput);
         if let Some(name) = self.command_specific.client_name {
             process.arg(name);
         }
         let json = self.p4.run(process)?;
         let raw: ClientSpecRaw = serde_json::from_value(json)?;
-        Ok(raw.into())
+        Ok(P4Output::new(vec![raw.into()], vec![]))
     }
 }
 
 impl<'p, 's> P4Command for ClientCommand<'p, SetClient<'s>> {
     type Response = String;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let process = self.build_process(CmdType::FormInput);
         let stdin_data = self.command_specific.client_spec.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
@@ -96,13 +97,13 @@ impl<'p, 's> P4Command for ClientCommand<'p, SetClient<'s>> {
             )))?
             .parse()
             .map_err(|_| P4Error::UnexpectedError(format!("unexpected output: {}", result)))?;
-        Ok(client_name)
+        Ok(P4Output::new(vec![client_name], vec![]))
     }
 }
 
 impl<'p, 's> P4Command for ClientCommand<'p, DeleteClient<'s>> {
     type Response = GenericResponse;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::Query);
         process.arg("-d");
         process.flag(self.force, "-f");
@@ -111,9 +112,9 @@ impl<'p, 's> P4Command for ClientCommand<'p, DeleteClient<'s>> {
         let response: GenericResponse = serde_json::from_value(json)?;
         let deleted_re = regex::Regex::new(r"^Client .+ deleted\.$").expect("invalid regex");
         if !deleted_re.is_match(response.data.trim()) {
-            return Err(P4Error::CommandSpecificError(response.data, 3));
+            return Err(P4Error::command(vec![crate::P4Message::new(3, 0, response.data)]));
         }
-        Ok(response)
+        Ok(P4Output::new(vec![response], vec![]))
     }
 }
 

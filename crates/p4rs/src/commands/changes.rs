@@ -1,6 +1,7 @@
 use crate::commands::process::{CmdType, P4Command};
 use crate::commands::types::{deserialize_unix_timestamp, ChangeStatus};
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
 use derive_setters::Setters;
@@ -45,8 +46,9 @@ impl<'p, 'f> ChangesCommand<'p, 'f> {
 }
 
 impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
-    type Response = Vec<ChangeData>;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    type Response = ChangeData;
+
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.p4.build_cmd("changes", CmdType::Query);
         process
             .flag(self.include_integrated, "-i")
@@ -58,8 +60,7 @@ impl<'p, 'f> P4Command for ChangesCommand<'p, 'f> {
             .opt("-u", &self.user)
             .opt("-c", &self.client)
             .args(self.files);
-        let json = self.p4.run_multi_line(process)?;
-        Ok(serde_json::from_value(json)?)
+        self.p4.run_parsed(process, true)
     }
 }
 

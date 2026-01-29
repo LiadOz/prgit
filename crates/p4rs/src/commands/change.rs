@@ -3,6 +3,7 @@ use crate::commands::types::{
     deserialize_p4_date, extract_numbered, ChangeStatus, GenericResponse,
 };
 use crate::error::P4Error;
+use crate::output::P4Output;
 use crate::p4::P4;
 use chrono::{DateTime, Utc};
 use derive_setters::Setters;
@@ -73,20 +74,20 @@ impl<'p, T> ChangeCommand<'p, T> {
 
 impl<'p> P4Command for ChangeCommand<'p, GetChange> {
     type Response = ChangeSpec;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::FormOutput);
         if let Some(change_number) = self.command_specific.change_number {
             process.arg(change_number.to_string());
         }
         let json = self.p4.run(process)?;
         let raw: ChangeSpecRaw = serde_json::from_value(json)?;
-        Ok(raw.into())
+        Ok(P4Output::new(vec![raw.into()], vec![]))
     }
 }
 
 impl<'p, 's> P4Command for ChangeCommand<'p, SetChange<'s>> {
     type Response = usize;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let process = self.build_process(CmdType::FormInput);
         let stdin_data = self.command_specific.change_spec.to_string();
         let output = self.p4.run_command(process, Some(&stdin_data))?;
@@ -100,13 +101,13 @@ impl<'p, 's> P4Command for ChangeCommand<'p, SetChange<'s>> {
             )))?
             .parse()
             .map_err(|_| P4Error::UnexpectedError(format!("unexpected output: {}", result)))?;
-        Ok(change)
+        Ok(P4Output::new(vec![change], vec![]))
     }
 }
 
 impl<'p> P4Command for ChangeCommand<'p, DeleteChange> {
     type Response = GenericResponse;
-    fn run(&self) -> Result<Self::Response, P4Error> {
+    fn run(&self) -> Result<P4Output<Self::Response>, P4Error> {
         let mut process = self.build_process(CmdType::Query);
         process.flag(self.force, "-f");
         process.arg("-d");
@@ -115,9 +116,9 @@ impl<'p> P4Command for ChangeCommand<'p, DeleteChange> {
         let response: GenericResponse = serde_json::from_value(json)?;
         let deleted_re = regex::Regex::new(r"^Change \d+ deleted\.$").expect("invalid regex");
         if !deleted_re.is_match(response.data.trim()) {
-            return Err(P4Error::CommandSpecificError(response.data, 3));
+            return Err(P4Error::command(vec![crate::P4Message::new(3, 0, response.data)]));
         }
-        Ok(response)
+        Ok(P4Output::new(vec![response], vec![]))
     }
 }
 
