@@ -1,9 +1,18 @@
 use crate::error::{P4Error, P4Message};
+use std::ops::Index;
 
 #[derive(Debug, Clone)]
 pub struct P4Output<T> {
     pub results: Vec<T>,
     pub warnings: Vec<P4Message>,
+}
+
+impl<T> Index<usize> for P4Output<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.results[index]
+    }
 }
 
 impl<T> P4Output<T> {

@@ -1,8 +1,10 @@
+mod changelist;
 mod commands;
 mod error;
 mod output;
 mod p4;
 
+pub use changelist::ChangelistBuilder;
 pub use error::{P4Error, P4Message};
 pub use output::P4Output;
 pub use p4::P4;

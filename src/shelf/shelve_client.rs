@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use p4rs::{P4, P4Error, P4Command, ChangeSpec, ChangeType, FileType};
+use p4rs::{P4, P4Error, P4Command, ChangeSpec, ChangeType, ChangelistBuilder};
 
 #[derive(PartialEq, Eq)]
 pub enum FileAction {
@@ -49,18 +48,6 @@ impl ShelveClient {
         self.p4.change().set(&change_spec).run()?.single()
     }
 
-    fn determine_file_type(path: &Path) -> std::io::Result<FileType> {
-        use std::os::unix::fs::PermissionsExt;
-        let meta = path.symlink_metadata()?;
-        if meta.file_type().is_symlink() {
-            Ok(FileType::symlink())
-        } else if meta.permissions().mode() & 0o111 != 0 {
-            Ok(FileType::text().executable())
-        } else {
-            Ok(FileType::text())
-        }
-    }
-
     fn copy_file(src: &Path, dest: &Path) -> std::io::Result<()> {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
@@ -81,46 +68,21 @@ impl ShelveClient {
     }
 
     fn apply_changes(&self, changelist: usize, base_dir: &Path, changes: &[FileChange]) -> Result<(), P4Error> {
-        let mut adds: HashMap<FileType, Vec<String>> = HashMap::new();
-        let mut edits: HashMap<FileType, Vec<String>> = HashMap::new();
-        let mut deletes: Vec<String> = Vec::new();
-
-        for change in changes {
-            let depot_path = format!("//{}/{}", self.client_name, change.path);
-            match change.action {
-                FileAction::Delete => deletes.push(depot_path),
-                FileAction::Add => {
-                    let ft = Self::determine_file_type(&base_dir.join(change.path))?;
-                    adds.entry(ft).or_default().push(depot_path);
-                }
-                FileAction::Edit => {
-                    let ft = Self::determine_file_type(&base_dir.join(change.path))?;
-                    edits.entry(ft).or_default().push(depot_path);
-                }
-            }
-        }
-
-        for (ft, paths) in &edits {
-            let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-            self.p4.edit(&refs).changelist(changelist).file_type(ft.clone()).run()?;
-        }
-
         for change in changes {
             if change.action != FileAction::Delete {
                 Self::copy_file(&base_dir.join(change.path), &self.client_root.join(change.path))?;
             }
         }
 
-        for (ft, paths) in &adds {
-            let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-            self.p4.add(&refs).changelist(changelist).file_type(ft.clone()).run()?;
+        let mut builder = ChangelistBuilder::with_changelist(&self.p4, self.client_root.clone(), changelist);
+        for change in changes {
+            match change.action {
+                FileAction::Add => { builder.add(change.path)?; }
+                FileAction::Edit => { builder.edit(change.path)?; }
+                FileAction::Delete => { builder.delete(change.path)?; }
+            }
         }
-
-        if !deletes.is_empty() {
-            let refs: Vec<&str> = deletes.iter().map(|s| s.as_str()).collect();
-            self.p4.delete(&refs).changelist(changelist).run()?;
-        }
-        Ok(())
+        builder.flush()
     }
 
     pub fn run(&self, base_change: usize, base_dir: &Path, changes: &[FileChange], description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
@@ -159,7 +121,7 @@ mod tests {
             .add_file("file1.txt", b"content 1")
             .add_file("file2.txt", b"content 2")
             .add_file("subdir/file3.txt", b"content 3")
-            .submit().submitted_change
+            .submit().unwrap().submitted_change
     }
 
     #[test]
@@ -307,7 +269,7 @@ mod tests {
         
         let base2 = tc.changelist("Rev 2")
             .edit_file("evolving.txt", b"version 2")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
         
         tc.changelist("Rev 3")
             .edit_file("evolving.txt", b"version 3")
@@ -370,7 +332,7 @@ mod tests {
         symlink("original_target.txt", &link_path).unwrap();
         let base = tc.changelist("Setup symlink")
             .add_file_with_opts("link.txt", b"", Some(FileType::symlink()))
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let tmp = TempDir::new().unwrap();
         symlink("new_target.txt", tmp.path().join("link.txt")).unwrap();
@@ -397,7 +359,7 @@ mod tests {
 
         let base = tc.changelist("Setup regular file")
             .add_file("config.txt", b"original content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let tmp = TempDir::new().unwrap();
         symlink("shared_config.txt", tmp.path().join("config.txt")).unwrap();
@@ -429,7 +391,7 @@ mod tests {
         symlink("shared_config.txt", &link_path).unwrap();
         let base = tc.changelist("Setup symlink")
             .add_file_with_opts("config.txt", b"", Some(FileType::symlink()))
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("config.txt"), b"inline content").unwrap();

@@ -292,7 +292,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("existing.txt", b"existing content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,
@@ -324,7 +324,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("file.txt", b"original content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,
@@ -356,7 +356,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("file.txt", b"content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,
@@ -387,7 +387,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("file.txt", b"content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,
@@ -440,7 +440,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("file.txt", b"content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,
@@ -481,7 +481,7 @@ mod tests {
 
         let base_change = env.p4_client.changelist("Initial")
             .add_file("old_name.txt", b"file content")
-            .submit().submitted_change;
+            .submit().unwrap().submitted_change;
 
         let base_oid = create_git_commit(
             &env.git_repo,

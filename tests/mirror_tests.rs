@@ -248,6 +248,7 @@ impl MirrorTestEnv {
             .changelist(desc)
             .add_file(path, content)
             .submit()
+            .unwrap()
     }
 
     fn edit_file(&self, path: &str, content: &str, desc: &str) -> SubmitResult {
@@ -255,6 +256,7 @@ impl MirrorTestEnv {
             .changelist(desc)
             .edit_file(path, content)
             .submit()
+            .unwrap()
     }
 
     fn delete_file(&self, path: &str, desc: &str) -> SubmitResult {
@@ -262,6 +264,7 @@ impl MirrorTestEnv {
             .changelist(desc)
             .delete_file(path)
             .submit()
+            .unwrap()
     }
 
     fn assert_p4_matches_git(&self) {
