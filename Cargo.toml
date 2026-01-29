@@ -16,6 +16,7 @@ p4rs = { path = "crates/p4rs" }
 rusqlite = { version = "0.35", features = ["bundled"] }
 tempfile = "3.24.0"
 thiserror = "2.0"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 cargo-llvm-cov = "0.6.21"

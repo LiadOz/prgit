@@ -18,6 +18,9 @@ struct Args {
     #[arg(long, default_value = "test_repo")]
     repo_path: PathBuf,
 
+    #[arg(long, default_value = "master")]
+    synced_branch: String,
+
     #[arg(long, default_value = "100")]
     max_changes: usize,
 
@@ -48,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(cd) => cd,
         None => {
             let id = db.create_prgit_client(&args.client, &args.p4_path, &args.port, "")?;
-            db.create_prgit_repo(id, args.repo_path.to_str().expect("Invalid repo path"), IntegrateStrategy::MergeOurs, Some(args.max_changes))?;
+            db.create_prgit_repo(id, args.repo_path.to_str().expect("Invalid repo path"), &args.synced_branch, IntegrateStrategy::MergeOurs, Some(args.max_changes))?;
             db.client(id)?.expect("just created")
         }
     };

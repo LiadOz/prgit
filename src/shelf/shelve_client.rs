@@ -35,7 +35,7 @@ impl ShelveClient {
             if !self.p4.files(&[&depot_path]).run().is_ok() {
                 continue
             }
-            match self.p4.sync(&[&depot_path]).metadata_only().run() {
+            match self.p4.sync(&[&depot_path]).run() {
                 Err(P4Error::CommandSpecificError(msg, _)) if msg.contains("file(s) up-to-date") => {},
                 Ok(_) => {},
                 Err(e) => return Err(e),

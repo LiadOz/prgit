@@ -7,8 +7,8 @@ use crate::mirror::IntegrateStrategy;
 
 use super::prgit_client::PrgitClient;
 use super::tables::{
-    BranchMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo, ShelveClient, ShelveConfig,
-    Table, UserMapping,
+    BranchMapping, BranchShelveMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo,
+    ShelveClientRecord, ShelveConfig, Table, UserMapping,
 };
 
 pub struct Database {
@@ -20,11 +20,12 @@ impl Database {
         let conn = Connection::open(path)?;
         conn.execute_batch(PrgitClientInfo::SCHEMA)?;
         conn.execute_batch(ShelveConfig::SCHEMA)?;
-        conn.execute_batch(ShelveClient::SCHEMA)?;
+        conn.execute_batch(ShelveClientRecord::SCHEMA)?;
         conn.execute_batch(BranchMapping::SCHEMA)?;
         conn.execute_batch(UserMapping::SCHEMA)?;
         conn.execute_batch(PrgitRepo::SCHEMA)?;
         conn.execute_batch(CommitChangeMapping::SCHEMA)?;
+        conn.execute_batch(BranchShelveMapping::SCHEMA)?;
         Ok(Self { conn })
     }
 
@@ -109,16 +110,17 @@ impl Database {
     ) -> Result<Option<PrgitRepo>, rusqlite::Error> {
         self.conn
             .query_row(
-                "SELECT id, prgit_client_id, repo_path, last_sync_change, integrate_strategy, max_changes_query FROM prgit_repos WHERE prgit_client_id = ?1",
+                "SELECT id, prgit_client_id, repo_path, synced_branch, last_sync_change, integrate_strategy, max_changes_query FROM prgit_repos WHERE prgit_client_id = ?1",
                 [prgit_client_id],
                 |row| {
                     Ok(PrgitRepo {
                         id: row.get::<_, i64>(0)? as u64,
                         prgit_client_id: row.get::<_, i64>(1)? as u64,
                         repo_path: PathBuf::from(row.get::<_, String>(2)?),
-                        last_sync_change: row.get::<_, i64>(3)? as usize,
-                        integrate_strategy: IntegrateStrategy::from_db(row.get(4)?),
-                        max_changes_query: row.get::<_, Option<i64>>(5)?.map(|v| v as usize),
+                        synced_branch: row.get(3)?,
+                        last_sync_change: row.get::<_, i64>(4)? as usize,
+                        integrate_strategy: IntegrateStrategy::from_db(row.get(5)?),
+                        max_changes_query: row.get::<_, Option<i64>>(6)?.map(|v| v as usize),
                     })
                 },
             )
@@ -133,12 +135,13 @@ impl Database {
         &self,
         prgit_client_id: u64,
         repo_path: &str,
+        synced_branch: &str,
         integrate_strategy: IntegrateStrategy,
         max_changes_query: Option<usize>,
     ) -> Result<(), rusqlite::Error> {
         self.conn.execute(
-            "INSERT INTO prgit_repos (prgit_client_id, repo_path, integrate_strategy, max_changes_query) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![prgit_client_id, repo_path, integrate_strategy.to_db(), max_changes_query.map(|v| v as i64)],
+            "INSERT INTO prgit_repos (prgit_client_id, repo_path, synced_branch, integrate_strategy, max_changes_query) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![prgit_client_id, repo_path, synced_branch, integrate_strategy.to_db(), max_changes_query.map(|v| v as i64)],
         )?;
         Ok(())
     }
@@ -149,14 +152,14 @@ impl Database {
     ) -> Result<Option<ShelveConfig>, rusqlite::Error> {
         self.conn
             .query_row(
-                "SELECT prgit_client_id, max_clients, timeout_secs, grow_threshold FROM shelve_config WHERE prgit_client_id = ?1",
+                "SELECT prgit_client_id, max_clients, timeout_secs, clients_root FROM shelve_config WHERE prgit_client_id = ?1",
                 [prgit_client_id],
                 |row| {
                     Ok(ShelveConfig {
                         prgit_client_id: row.get::<_, i64>(0)? as u64,
                         max_clients: row.get::<_, i64>(1)? as usize,
                         timeout: Duration::from_secs(row.get::<_, i64>(2)? as u64),
-                        grow_threshold: row.get::<_, i64>(3)? as usize,
+                        clients_root: PathBuf::from(row.get::<_, String>(3)?),
                     })
                 },
             )
@@ -172,11 +175,11 @@ impl Database {
         prgit_client_id: u64,
         max_clients: usize,
         timeout: Duration,
-        grow_threshold: usize,
+        clients_root: &str,
     ) -> Result<(), rusqlite::Error> {
         self.conn.execute(
-            "INSERT INTO shelve_config (prgit_client_id, max_clients, timeout_secs, grow_threshold) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![prgit_client_id, max_clients as i64, timeout.as_secs() as i64, grow_threshold as i64],
+            "INSERT INTO shelve_config (prgit_client_id, max_clients, timeout_secs, clients_root) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![prgit_client_id, max_clients as i64, timeout.as_secs() as i64, clients_root],
         )?;
         Ok(())
     }
@@ -184,7 +187,7 @@ impl Database {
     pub fn client(&self, id: u64) -> Result<Option<PrgitClient<'_>>, rusqlite::Error> {
         self.conn
             .query_row(
-                "SELECT p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
+                "SELECT p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.synced_branch, r.integrate_strategy, r.max_changes_query
                  FROM prgit_clients p
                  JOIN prgit_repos r ON p.id = r.prgit_client_id
                  WHERE p.id = ?1",
@@ -198,8 +201,9 @@ impl Database {
                         row.get(2)?,
                         row.get(3)?,
                         PathBuf::from(row.get::<_, String>(4)?),
-                        IntegrateStrategy::from_db(row.get(5)?),
-                        row.get::<_, Option<i64>>(6)?.map(|v| v as usize),
+                        row.get(5)?,
+                        IntegrateStrategy::from_db(row.get(6)?),
+                        row.get::<_, Option<i64>>(7)?.map(|v| v as usize),
                     ))
                 },
             )
@@ -213,7 +217,7 @@ impl Database {
     pub fn client_by_name(&self, name: &str) -> Result<Option<PrgitClient<'_>>, rusqlite::Error> {
         self.conn
             .query_row(
-                "SELECT p.id, p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.integrate_strategy, r.max_changes_query
+                "SELECT p.id, p.client_name, p.p4_path, p.p4port, p.p4user, r.repo_path, r.synced_branch, r.integrate_strategy, r.max_changes_query
                  FROM prgit_clients p
                  JOIN prgit_repos r ON p.id = r.prgit_client_id
                  WHERE p.client_name = ?1",
@@ -227,8 +231,9 @@ impl Database {
                         row.get(3)?,
                         row.get(4)?,
                         PathBuf::from(row.get::<_, String>(5)?),
-                        IntegrateStrategy::from_db(row.get(6)?),
-                        row.get::<_, Option<i64>>(7)?.map(|v| v as usize),
+                        row.get(6)?,
+                        IntegrateStrategy::from_db(row.get(7)?),
+                        row.get::<_, Option<i64>>(8)?.map(|v| v as usize),
                     ))
                 },
             )
@@ -294,7 +299,7 @@ mod tests {
     fn create_and_get_prgit_repo() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_prgit_repo(client_id, "/path/to/repo", IntegrateStrategy::MergeOurs, Some(100))
+        db.create_prgit_repo(client_id, "/path/to/repo", "master", IntegrateStrategy::MergeOurs, Some(100))
             .unwrap();
 
         let repo = db.get_prgit_repo(client_id).unwrap().unwrap();
@@ -315,14 +320,14 @@ mod tests {
     fn create_and_get_shelve_config() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_shelve_config(client_id, 5, Duration::from_secs(300), 10)
+        db.create_shelve_config(client_id, 5, Duration::from_secs(300), "/shelve/clients")
             .unwrap();
 
         let config = db.get_shelve_config(client_id).unwrap().unwrap();
         assert_eq!(config.prgit_client_id, client_id);
         assert_eq!(config.max_clients, 5);
         assert_eq!(config.timeout, Duration::from_secs(300));
-        assert_eq!(config.grow_threshold, 10);
+        assert_eq!(config.clients_root, PathBuf::from("/shelve/clients"));
     }
 
     #[test]
@@ -359,7 +364,7 @@ mod tests {
     fn create_repo_without_max_changes() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_prgit_repo(client_id, "/repo", IntegrateStrategy::MergeOurs, None).unwrap();
+        db.create_prgit_repo(client_id, "/repo", "master", IntegrateStrategy::MergeOurs, None).unwrap();
 
         let repo = db.get_prgit_repo(client_id).unwrap().unwrap();
         assert_eq!(repo.max_changes_query, None);
@@ -369,7 +374,7 @@ mod tests {
     fn shelve_config_timeout_preserved() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_shelve_config(client_id, 10, Duration::from_secs(3600), 5).unwrap();
+        db.create_shelve_config(client_id, 10, Duration::from_secs(3600), "/clients").unwrap();
 
         let config = db.get_shelve_config(client_id).unwrap().unwrap();
         assert_eq!(config.timeout.as_secs(), 3600);

@@ -52,6 +52,7 @@ pub struct PrgitRepo {
     pub id: u64,
     pub prgit_client_id: u64,
     pub repo_path: PathBuf,
+    pub synced_branch: String,
     pub last_sync_change: usize,
     pub integrate_strategy: IntegrateStrategy,
     pub max_changes_query: Option<usize>,
@@ -63,6 +64,7 @@ impl Table for PrgitRepo {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
             repo_path TEXT NOT NULL,
+            synced_branch TEXT NOT NULL DEFAULT 'master',
             last_sync_change INTEGER NOT NULL DEFAULT 0,
             integrate_strategy INTEGER NOT NULL,
             max_changes_query INTEGER
@@ -93,7 +95,7 @@ pub struct ShelveConfig {
     pub prgit_client_id: u64,
     pub max_clients: usize,
     pub timeout: Duration,
-    pub grow_threshold: usize,
+    pub clients_root: PathBuf,
 }
 
 impl Table for ShelveConfig {
@@ -102,7 +104,7 @@ impl Table for ShelveConfig {
             prgit_client_id INTEGER PRIMARY KEY REFERENCES prgit_clients(id),
             max_clients INTEGER NOT NULL,
             timeout_secs INTEGER NOT NULL,
-            grow_threshold INTEGER
+            clients_root TEXT NOT NULL
         );
     ";
 }
@@ -111,30 +113,25 @@ impl Table for ShelveConfig {
 pub enum ShelveClientStatus {
     Available,
     InUse,
-    Creating,
 }
 
 #[derive(Debug, Clone)]
-pub struct ShelveClient {
+pub struct ShelveClientRecord {
     pub id: u64,
     pub prgit_client_id: u64,
     pub client_name: String,
     pub status: ShelveClientStatus,
-    pub locked_by: Option<String>,
     pub locked_at: Option<i64>,
-    pub created_at: i64,
 }
 
-impl Table for ShelveClient {
+impl Table for ShelveClientRecord {
     const SCHEMA: &'static str = "
         CREATE TABLE IF NOT EXISTS shelve_clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
             client_name TEXT NOT NULL UNIQUE,
-            status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'in_use', 'creating')),
-            locked_by TEXT,
-            locked_at INTEGER,
-            created_at INTEGER NOT NULL
+            status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'in_use')),
+            locked_at INTEGER
         );
     ";
 }
@@ -168,6 +165,24 @@ impl Table for UserMapping {
         CREATE TABLE IF NOT EXISTS user_mapping (
             user TEXT PRIMARY KEY,
             email TEXT NOT NULL
+        );
+    ";
+}
+
+#[derive(Debug, Clone)]
+pub struct BranchShelveMapping {
+    pub prgit_client_id: u64,
+    pub branch: String,
+    pub shelved_change: usize,
+}
+
+impl Table for BranchShelveMapping {
+    const SCHEMA: &'static str = "
+        CREATE TABLE IF NOT EXISTS branch_shelve_mapping (
+            prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
+            branch TEXT NOT NULL,
+            shelved_change INTEGER NOT NULL,
+            PRIMARY KEY (prgit_client_id, branch)
         );
     ";
 }

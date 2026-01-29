@@ -1453,6 +1453,7 @@ dependencies = [
  "tempfile",
  "test-log",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
