@@ -22,10 +22,30 @@ pub struct ShelveClient {
 impl ShelveClient {
     pub fn new(p4: P4, client_name: &str, client_root: PathBuf) -> Result<Self, P4Error> {
         let p4 = p4.client_name(client_name);
-        if !p4.opened(&["//..."]).run()?.is_empty() {
-            p4.revert(&["//..."]).run()?;
-        }
+        Self::cleanup_workspace(&p4, &client_root)?;
         Ok(Self { p4, client_name: client_name.to_string(), client_root })
+    }
+
+    fn cleanup_workspace(p4: &P4, client_root: &PathBuf) -> Result<(), P4Error> {
+        let _ = p4.revert(&["//..."]).run();
+        let _ = p4.sync(&["//...#none"]).run();
+        let _ = Self::clear_directory_contents(client_root);
+        Ok(())
+    }
+
+    fn clear_directory_contents(dir: &Path) -> Result<(), P4Error> {
+        if dir.exists() {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path)?;
+                } else {
+                    std::fs::remove_file(&path)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn sync(&self, base_change: usize, files: &[&str]) -> Result<(), P4Error> {
@@ -68,18 +88,33 @@ impl ShelveClient {
     }
 
     fn apply_changes(&self, changelist: usize, base_dir: &Path, changes: &[FileChange]) -> Result<(), P4Error> {
-        for change in changes {
-            if change.action != FileAction::Delete {
-                Self::copy_file(&base_dir.join(change.path), &self.client_root.join(change.path))?;
-            }
-        }
-
         let mut builder = ChangelistBuilder::with_changelist(&self.p4, self.client_root.clone(), changelist);
         for change in changes {
+            let src = base_dir.join(change.path);
+            let dest = self.client_root.join(change.path);
             match change.action {
-                FileAction::Add => { builder.add(change.path)?; }
-                FileAction::Edit => { builder.edit(change.path)?; }
-                FileAction::Delete => { builder.delete(change.path)?; }
+                FileAction::Add => {
+                    Self::copy_file(&src, &dest)?;
+                    builder.add(change.path)?;
+                }
+                FileAction::Edit => {
+                    let new_type = ChangelistBuilder::determine_file_type(&src)?;
+                    let old_type = ChangelistBuilder::determine_file_type(&dest)?;
+                    let full_path = self.client_root.join(change.path);
+                    self.p4.edit(&[full_path.to_string_lossy().as_ref()])
+                        .changelist(changelist)
+                        .run()?;
+                    if new_type != old_type {
+                        self.p4.reopen(&[full_path.to_string_lossy().as_ref()])
+                            .changelist(changelist)
+                            .file_type(new_type)
+                            .run()?;
+                    }
+                    Self::copy_file(&src, &dest)?;
+                }
+                FileAction::Delete => {
+                    builder.delete(change.path)?;
+                }
             }
         }
         builder.flush()
@@ -93,17 +128,8 @@ impl ShelveClient {
         };
         self.apply_changes(cl, base_dir, changes)?;
         self.p4.shelve().set(cl).replace().run()?;
+        Self::cleanup_workspace(&self.p4, &self.client_root)?;
         Ok(cl)
-    }
-}
-
-impl Drop for ShelveClient {
-    fn drop(&mut self) {
-        if let Ok(opened) = self.p4.opened(&["//..."]).run() {
-            if !opened.is_empty() {
-                self.p4.revert(&["//..."]).run().ok();
-            }
-        }
     }
 }
 
@@ -124,6 +150,11 @@ mod tests {
             .submit().unwrap().submitted_change
     }
 
+    fn cleanup_shelved_change(tc: &p4rs::testkit::TestClient, cl: usize) {
+        tc.p4.shelve().delete(cl).run().unwrap();
+        tc.p4.change().delete(cl).run().unwrap();
+    }
+
     #[test]
     fn test_shelve_add_file() {
         let tc = SERVER.test_client();
@@ -142,8 +173,7 @@ mod tests {
         let cl = client.run(0, &tmp.path(), &changes, "Add new file", None).unwrap();
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add new file");
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -165,8 +195,7 @@ mod tests {
         
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Edit file");
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -187,8 +216,7 @@ mod tests {
         
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Delete file");
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -213,8 +241,7 @@ mod tests {
         
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add executable");
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -241,8 +268,7 @@ mod tests {
         
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Multiple changes");
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -294,13 +320,13 @@ mod tests {
         assert_eq!(shelved.files.len(), 1);
         assert_eq!(shelved.files[0].rev, Some(2));
         assert!(shelved.files[0].depot_file.ends_with("evolving.txt"));
-        
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
     fn test_shelve_add_symlink() {
         use std::os::unix::fs::symlink;
+        use p4rs::FileType;
         let tc = SERVER.test_client();
         setup_test_files(&tc);
 
@@ -316,10 +342,12 @@ mod tests {
         let changes = [FileChange { path: "link.txt", action: FileAction::Add }];
         let cl = client.run(0, tmp.path(), &changes, "Add symlink", None).unwrap();
 
-        let target = fs::read_link(tc.client_root().join("link.txt")).unwrap();
-        assert_eq!(target.to_str().unwrap(), "target.txt");
+        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        assert!(shelved.files[0].depot_file.ends_with("link.txt"));
+        assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
 
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -328,6 +356,7 @@ mod tests {
         use p4rs::FileType;
         let tc = SERVER.test_client();
 
+        fs::write(tc.client_root().join("original_target.txt"), b"original").unwrap();
         let link_path = tc.client_root().join("link.txt");
         symlink("original_target.txt", &link_path).unwrap();
         let base = tc.changelist("Setup symlink")
@@ -346,15 +375,18 @@ mod tests {
         let changes = [FileChange { path: "link.txt", action: FileAction::Edit }];
         let cl = client.run(base, tmp.path(), &changes, "Edit symlink", None).unwrap();
 
-        let target = fs::read_link(tc.client_root().join("link.txt")).unwrap();
-        assert_eq!(target.to_str().unwrap(), "new_target.txt");
+        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        assert!(shelved.files[0].depot_file.ends_with("link.txt"));
+        assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
 
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
     fn test_shelve_file_to_symlink() {
         use std::os::unix::fs::symlink;
+        use p4rs::FileType;
         let tc = SERVER.test_client();
 
         let base = tc.changelist("Setup regular file")
@@ -373,12 +405,12 @@ mod tests {
         let changes = [FileChange { path: "config.txt", action: FileAction::Edit }];
         let cl = client.run(base, tmp.path(), &changes, "Convert to symlink", None).unwrap();
 
-        let link_path = tc.client_root().join("config.txt");
-        assert!(link_path.is_symlink());
-        let target = fs::read_link(&link_path).unwrap();
-        assert_eq!(target.to_str().unwrap(), "shared_config.txt");
+        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        assert!(shelved.files[0].depot_file.ends_with("config.txt"));
+        assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
 
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
     #[test]
@@ -387,6 +419,7 @@ mod tests {
         use p4rs::FileType;
         let tc = SERVER.test_client();
 
+        fs::write(tc.client_root().join("shared_config.txt"), b"shared").unwrap();
         let link_path = tc.client_root().join("config.txt");
         symlink("shared_config.txt", &link_path).unwrap();
         let base = tc.changelist("Setup symlink")
@@ -405,12 +438,12 @@ mod tests {
         let changes = [FileChange { path: "config.txt", action: FileAction::Edit }];
         let cl = client.run(base, tmp.path(), &changes, "Convert to regular file", None).unwrap();
 
-        let file_path = tc.client_root().join("config.txt");
-        assert!(!file_path.is_symlink());
-        let content = fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "inline content");
+        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        assert!(shelved.files[0].depot_file.ends_with("config.txt"));
+        assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Text);
 
-        tc.p4.shelve().delete(cl).run().unwrap();
+        cleanup_shelved_change(&tc, cl);
     }
 
 }

@@ -38,18 +38,22 @@ fn test_info() {
 #[test]
 fn test_changes() {
     let test_client = SERVER.test_client();
-    test_client
+    let cl1 = test_client
         .p4
         .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Test change"))
         .run()
-        .expect("Failed to create change");
-    test_client
+        .expect("Failed to create change")
+        .single()
+        .unwrap();
+    let cl2 = test_client
         .p4
         .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Test change 2"))
         .run()
-        .expect("Failed to create change");
+        .expect("Failed to create change")
+        .single()
+        .unwrap();
     let changes = test_client
         .p4
         .changes(&[])
@@ -58,6 +62,8 @@ fn test_changes() {
         .run()
         .expect("Failed to get changes");
     assert_eq!(changes.len(), 2);
+    test_client.p4.change().delete(cl1).run().unwrap();
+    test_client.p4.change().delete(cl2).run().unwrap();
 }
 
 #[test]
@@ -82,6 +88,7 @@ fn test_change_spec() {
         .single()
         .expect("Expected single result");
     assert!(result_spec.description.trim() == change_spec.description.trim());
+    test_client.p4.change().delete(change_number).run().unwrap();
 }
 
 #[test]
@@ -201,6 +208,7 @@ fn test_edit_with_changelist() {
     assert_eq!(opened[0].change.number(), Some(edit_cl));
 
     test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(edit_cl).run().unwrap();
 }
 
 #[test]
@@ -242,11 +250,8 @@ fn test_change_with_multiple_files() {
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(cl).run().unwrap();
 }
 
 #[test]
@@ -445,11 +450,8 @@ fn test_shelve() {
         .expect("Failed to delete shelve");
     assert!(delete_result.single().expect("Expected single result").data.contains("deleted"));
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(cl).run().unwrap();
 }
 
 #[test]
@@ -517,11 +519,9 @@ fn test_reopen() {
     assert_eq!(reopen_type.len(), 1);
     assert_eq!(reopen_type[0].file_type, Some(p4rs::FileType::binary()));
 
-    test_client
-        .p4
-        .revert(&["//..."])
-        .run()
-        .expect("Failed to revert");
+    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(cl1).run().unwrap();
+    test_client.p4.change().delete(cl2).run().unwrap();
 }
 
 #[test]
@@ -627,6 +627,7 @@ fn test_delete() {
     assert!(opened.iter().all(|f| f.action == OpenAction::Delete));
 
     test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(delete_cl).run().unwrap();
 
     let preview_result = test_client.p4.delete(&[file1_str]).preview().run().expect("Failed to preview delete");
     assert_eq!(preview_result.len(), 1);
@@ -1086,6 +1087,7 @@ fn test_move_file() {
     assert_eq!(opened.len(), 2);
 
     test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client.p4.change().delete(move_cl).run().unwrap();
 }
 
 #[test]
@@ -1276,4 +1278,5 @@ fn test_changelist_builder_add_nonexistent_file_error() {
 
     let result = builder.add("does_not_exist.txt");
     assert!(result.is_err());
+    test_client.p4.change().delete(builder.changelist).run().unwrap();
 }

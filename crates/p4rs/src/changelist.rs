@@ -15,7 +15,7 @@ pub(crate) enum PendingOp {
 }
 
 pub struct ChangelistBuilder<'p> {
-    p4: &'p P4,
+    pub(crate) p4: &'p P4,
     pub changelist: usize,
     pub root: PathBuf,
     pending: Vec<PendingOp>,

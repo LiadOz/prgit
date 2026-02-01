@@ -156,7 +156,13 @@ impl P4 {
 
     fn is_message_line(line: &str) -> bool {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-            json.get("severity").is_some() || json.get("level").is_some()
+            if json.get("severity").is_some() {
+                return true;
+            }
+            if let Some(serde_json::Value::Number(level)) = json.get("level") {
+                return level.as_u64().unwrap_or(0) > 0;
+            }
+            false
         } else {
             false
         }
