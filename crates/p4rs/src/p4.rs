@@ -2,6 +2,7 @@ use crate::commands::change::Change;
 use crate::commands::client::Client;
 use crate::commands::print::Print;
 use crate::commands::process::{CmdType, P4Process};
+use crate::commands::protect::Protect;
 use crate::commands::shelve::Shelve;
 use crate::commands::sync::SyncCommand;
 use crate::commands::user::User;
@@ -328,6 +329,10 @@ impl P4 {
 
     pub fn where_cmd<'p, 'f>(&'p self, files: &'f [&'f str]) -> WhereCommand<'p, 'f> {
         WhereCommand::new(self, files)
+    }
+
+    pub fn protect(&self) -> Protect<'_> {
+        Protect::new(self)
     }
 }
 

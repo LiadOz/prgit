@@ -29,6 +29,7 @@ pub use commands::submit::SubmitResult;
 pub use commands::sync::{SyncAction, SyncResult};
 pub use commands::user::UserInfo;
 pub use commands::where_cmd::WhereResult;
+pub use commands::protect::{AccessLevel, Protection, ProtectionKind, ProtectionTable};
 
 pub use commands::types::{
     BaseFileType, ChangeListType, ChangeStatus, FileAction, FileType, LineEnding,

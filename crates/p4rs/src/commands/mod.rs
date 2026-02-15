@@ -11,6 +11,7 @@ pub mod move_file;
 pub mod opened;
 pub mod print;
 pub mod process;
+pub mod protect;
 pub mod reopen;
 pub mod revert;
 pub mod shelve;

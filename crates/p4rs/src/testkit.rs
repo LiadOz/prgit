@@ -1,4 +1,5 @@
 use crate::changelist::ChangelistBuilder;
+use crate::commands::protect::{Protection, ProtectionTable};
 use crate::commands::types::FileType;
 use crate::{ChangeStatus, ClientMapping, ClientSpec, P4Command, P4};
 use std::fs;
@@ -8,6 +9,13 @@ use tempfile::TempDir;
 use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
 
 const DEFAULT_IMAGE: &str = "p4d-server";
+
+pub const ADMIN_USER: &str = "admin";
+pub const ADMIN_PASSWORD: &str = "admin123";
+
+pub fn admin_p4(p4: &P4) -> P4 {
+    p4.clone().p4_user(ADMIN_USER).password(ADMIN_PASSWORD)
+}
 
 pub struct TestClient {
     pub p4: P4,
@@ -169,6 +177,23 @@ impl P4Server {
         panic!("P4 server failed to become ready after 3 seconds");
     }
 
+    fn setup_protections(port: u16) {
+        let admin = P4::new()
+            .port(format!("localhost:{}", port))
+            .p4_user(ADMIN_USER)
+            .password(ADMIN_PASSWORD);
+        let table = ProtectionTable::new(vec![
+            Protection::super_user(ADMIN_USER, "*", "//..."),
+            Protection::write_user("*", "*", "//..."),
+        ]);
+        admin
+            .protect()
+            .set(&table)
+            .run()
+            .expect("Failed to setup protections");
+        log::info!("Protections configured: admin has super access, others have write access");
+    }
+
     pub fn start() -> Self {
         if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
             let port = port_str
@@ -187,12 +212,17 @@ impl P4Server {
 
         let port = container.get_host_port_ipv4(1666).expect("Failed to get container port");
         Self::wait_for_p4_ready(port);
+        Self::setup_protections(port);
         *CONTAINER_ID.lock().unwrap() = Some(container.id().to_string());
         Self { port, container: Some(container) }
     }
 
     pub fn p4(&self) -> P4 {
         P4::new().port(format!("localhost:{}", self.port))
+    }
+
+    pub fn admin_p4(&self) -> P4 {
+        admin_p4(&self.p4())
     }
 
     pub fn test_client(&self) -> TestClient {

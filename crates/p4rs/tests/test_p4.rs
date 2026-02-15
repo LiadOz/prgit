@@ -1280,3 +1280,47 @@ fn test_changelist_builder_add_nonexistent_file_error() {
     assert!(result.is_err());
     test_client.p4.change().delete(builder.changelist).run().unwrap();
 }
+
+#[test]
+fn test_protect_get() {
+    let admin_p4 = SERVER.admin_p4();
+    let table = admin_p4.protect().get().run().expect("Failed to get protections").single().expect("Expected single result");
+    assert!(!table.protections.is_empty());
+    assert!(table.protections.iter().any(|p| p.name == "admin" && p.access == p4rs::AccessLevel::Super));
+}
+
+#[test]
+fn test_protect_set() {
+    let admin_p4 = SERVER.admin_p4();
+    let table = p4rs::ProtectionTable::new(vec![
+        p4rs::Protection::super_user("admin", "*", "//..."),
+        p4rs::Protection::write_user("*", "*", "//..."),
+    ]);
+    let result = admin_p4.protect().set(&table).run().expect("Failed to set protections");
+    assert!(!result.is_empty());
+}
+
+#[test]
+fn test_non_admin_cannot_modify_protections() {
+    let test_client = SERVER.test_client();
+    let table = p4rs::ProtectionTable::new(vec![
+        p4rs::Protection::write_user("*", "*", "//..."),
+    ]);
+    let result = test_client.p4.protect().set(&table).run();
+    assert!(matches!(result, Err(P4Error::PermissionDenied(_))));
+}
+
+#[test]
+fn test_admin_p4_can_perform_admin_operations() {
+    let admin_p4 = SERVER.admin_p4();
+    let table = admin_p4.protect().get().run().expect("Failed to get protections with admin");
+    assert!(table.single().is_ok());
+}
+
+#[test]
+fn test_admin_p4_function() {
+    let test_client = SERVER.test_client();
+    let admin = p4rs::testkit::admin_p4(&test_client.p4);
+    let table = admin.protect().get().run().expect("Failed to get protections");
+    assert!(table.single().is_ok());
+}
