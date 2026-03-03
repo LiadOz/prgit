@@ -49,7 +49,20 @@ impl<'r> CommitBuilder<'r> {
         file_path: &Path,
         mode: FileMode,
     ) -> Result<(), MirrorError> {
-        let blob = self.repo.blob_path(file_path)?;
+        let blob = if mode == FileMode::Link {
+            // p4 print -o creates actual symlinks on disk. Read the link target
+            // and store it as blob content (git symlinks are blobs containing the target path).
+            let target = std::fs::read_link(file_path).map_err(|e| {
+                MirrorError::MirrorFailed(format!(
+                    "Failed to read symlink at {}: {}",
+                    file_path.display(),
+                    e
+                ))
+            })?;
+            self.repo.blob(target.as_os_str().as_encoded_bytes())?
+        } else {
+            self.repo.blob_path(file_path)?
+        };
         self.tree_builder.upsert(path, blob, mode);
         Ok(())
     }

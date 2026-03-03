@@ -1,6 +1,6 @@
-use git2::Repository;
+use git2::{FileMode, Repository};
 use p4rs::testkit::{TestClient, SERVER};
-use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4Command, SubmitResult};
+use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4, P4Command, SubmitResult};
 use prgit::mirror::{HashMapMirrorData, IntegrateStrategy, Mirror, MirrorData};
 use std::collections::HashMap;
 use std::fs;
@@ -203,6 +203,45 @@ fn test_max_changes_batching() {
     env.mirror_with_data(data).run().expect("First batch");
     assert_eq!(env.git_commit_count(), 10);
     env.assert_p4_matches_git();
+}
+
+#[test]
+fn test_symlink_file() {
+    use std::os::unix::fs::symlink;
+
+    let env = MirrorTestEnv::new();
+
+    // Create a symlink whose target does NOT exist in this change.
+    // This matches real-world P4 usage where symlinks point to relative paths.
+    let link_path = env.p4_client.client_root().join("config.txt");
+    symlink("shared_config.txt", &link_path).unwrap();
+
+    let cl = env.p4_client.p4.change()
+        .set(&ChangeSpec::new(ChangeType::New).description("Add symlink"))
+        .run().unwrap().single().unwrap();
+
+    env.p4_client.p4.add(&[link_path.to_str().unwrap()])
+        .changelist(cl)
+        .file_type(FileType::symlink())
+        .run().unwrap();
+    env.p4_client.p4.submit(cl).run().unwrap();
+
+    env.mirror().run().expect("Mirror should handle symlinks");
+    assert_eq!(env.git_commit_count(), 1);
+
+    // In git, a symlink entry has Link mode and blob contains the target path
+    let repo = env.git_repo_non_bare();
+    let head = repo.head().unwrap();
+    let commit = head.peel_to_commit().unwrap();
+    let tree = commit.tree().unwrap();
+    let entry = tree.get_name("config.txt").expect("config.txt should exist in tree");
+    assert_eq!(entry.filemode(), i32::from(FileMode::Link));
+    let blob = repo.find_blob(entry.id()).unwrap();
+    assert_eq!(
+        std::str::from_utf8(blob.content()).unwrap(),
+        "shared_config.txt",
+        "Symlink blob should contain the target path, not dereferenced content"
+    );
 }
 
 struct MirrorTestEnv {
