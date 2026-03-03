@@ -7,6 +7,7 @@ pub mod describe;
 pub mod edit;
 pub mod files;
 pub mod info;
+pub mod login;
 pub mod move_file;
 pub mod opened;
 pub mod print;

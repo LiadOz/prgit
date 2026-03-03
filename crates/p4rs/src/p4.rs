@@ -1,5 +1,6 @@
 use crate::commands::change::Change;
 use crate::commands::client::Client;
+use crate::commands::login::Login;
 use crate::commands::print::Print;
 use crate::commands::process::{CmdType, P4Process};
 use crate::commands::protect::Protect;
@@ -333,6 +334,10 @@ impl P4 {
 
     pub fn protect(&self) -> Protect<'_> {
         Protect::new(self)
+    }
+
+    pub fn login(&self) -> Login<'_> {
+        Login::new(self)
     }
 }
 

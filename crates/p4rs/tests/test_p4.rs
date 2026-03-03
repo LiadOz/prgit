@@ -1324,3 +1324,19 @@ fn test_admin_p4_function() {
     let table = admin.protect().get().run().expect("Failed to get protections");
     assert!(table.single().is_ok());
 }
+
+#[test]
+fn test_login_status_no_security() {
+    // Test server doesn't have security mode enabled, so login -s
+    // returns a message-level response rather than ticket data.
+    let admin = SERVER.admin_p4();
+    let result = admin.login().status();
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_login_status_no_ticket() {
+    let p4 = SERVER.p4().p4_user("nobody");
+    let result = p4.login().status();
+    assert!(result.is_err());
+}

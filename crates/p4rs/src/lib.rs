@@ -27,6 +27,7 @@ pub use commands::revert::RevertResult;
 pub use commands::shelve::ShelveResult;
 pub use commands::submit::SubmitResult;
 pub use commands::sync::{SyncAction, SyncResult};
+pub use commands::login::LoginStatus;
 pub use commands::user::UserInfo;
 pub use commands::where_cmd::WhereResult;
 pub use commands::protect::{AccessLevel, Protection, ProtectionKind, ProtectionTable};

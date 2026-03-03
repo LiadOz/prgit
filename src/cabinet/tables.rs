@@ -105,24 +105,6 @@ impl Table for ShelveConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct BranchMapping {
-    pub prgit_client_id: u64,
-    pub change: usize,
-    pub branch: String,
-}
-
-impl Table for BranchMapping {
-    const SCHEMA: &'static str = "
-        CREATE TABLE IF NOT EXISTS branch_mapping (
-            prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
-            change INTEGER NOT NULL,
-            branch TEXT NOT NULL,
-            PRIMARY KEY (prgit_client_id, change)
-        );
-    ";
-}
-
-#[derive(Debug, Clone)]
 pub struct UserMapping {
     pub user: String,
     pub email: String,
@@ -133,6 +115,26 @@ impl Table for UserMapping {
         CREATE TABLE IF NOT EXISTS user_mapping (
             user TEXT PRIMARY KEY,
             email TEXT NOT NULL
+        );
+    ";
+}
+
+#[derive(Debug, Clone)]
+pub struct TicketMetadata {
+    pub p4port: String,
+    pub p4user: String,
+    pub expires_at: i64,
+    pub stored_at: i64,
+}
+
+impl Table for TicketMetadata {
+    const SCHEMA: &'static str = "
+        CREATE TABLE IF NOT EXISTS ticket_metadata (
+            p4port TEXT NOT NULL,
+            p4user TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            stored_at INTEGER NOT NULL,
+            PRIMARY KEY (p4port, p4user)
         );
     ";
 }

@@ -107,11 +107,12 @@ impl<'a> PrgitClient<'a> {
     pub fn get_branch_for_change(&self, change: usize) -> Option<String> {
         self.conn
             .query_row(
-                "SELECT branch FROM branch_mapping WHERE prgit_client_id = ?1 AND change = ?2",
+                "SELECT branch FROM branch_shelve_mapping WHERE prgit_client_id = ?1 AND shelved_change = ?2",
                 rusqlite::params![self.client_id, change as i64],
-                |row| row.get(0),
+                |row| row.get::<_, String>(0),
             )
             .ok()
+            .map(|b| format!("refs/heads/{}", b))
     }
 
     pub fn shelve_config(&self) -> Option<ShelveConfig> {

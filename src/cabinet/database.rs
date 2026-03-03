@@ -6,8 +6,8 @@ use crate::mirror::IntegrateStrategy;
 
 use super::prgit_client::PrgitClient;
 use super::tables::{
-    BranchMapping, BranchShelveMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo,
-    ShelveConfig, Table, UserMapping,
+    BranchShelveMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo,
+    ShelveConfig, Table, TicketMetadata, UserMapping,
 };
 
 pub struct Database {
@@ -15,15 +15,19 @@ pub struct Database {
 }
 
 impl Database {
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     pub fn open(path: &str) -> Result<Self, rusqlite::Error> {
         let conn = Connection::open(path)?;
         conn.execute_batch(PrgitClientInfo::SCHEMA)?;
         conn.execute_batch(ShelveConfig::SCHEMA)?;
-        conn.execute_batch(BranchMapping::SCHEMA)?;
         conn.execute_batch(UserMapping::SCHEMA)?;
         conn.execute_batch(PrgitRepo::SCHEMA)?;
         conn.execute_batch(CommitChangeMapping::SCHEMA)?;
         conn.execute_batch(BranchShelveMapping::SCHEMA)?;
+        conn.execute_batch(TicketMetadata::SCHEMA)?;
         Ok(Self { conn })
     }
 

@@ -5,7 +5,7 @@ use std::path::Path;
 use p4rs::{ClientMapping, ClientSpec, P4, P4Command, P4Error};
 use thiserror::Error;
 
-use crate::cabinet::PrgitClient;
+use crate::cabinet::{PrgitClient, TicketStoreError};
 
 use super::shelve_client::ShelveClient;
 
@@ -99,6 +99,8 @@ pub enum ShelveClientError {
     Io(#[from] std::io::Error),
     #[error("Invalid path")]
     InvalidPath,
+    #[error("Ticket auth error: {0}")]
+    TicketAuth(#[from] TicketStoreError),
 }
 
 #[cfg(test)]
