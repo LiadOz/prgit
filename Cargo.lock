@@ -1447,6 +1447,7 @@ dependencies = [
  "clap",
  "env_logger",
  "git2",
+ "libc",
  "log",
  "p4rs",
  "rusqlite",

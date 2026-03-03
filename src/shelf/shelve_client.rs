@@ -38,6 +38,9 @@ impl ShelveClient {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
+                if path.file_name() == Some(std::ffi::OsStr::new(".prgit.lock")) {
+                    continue;
+                }
                 if path.is_dir() {
                     std::fs::remove_dir_all(&path)?;
                 } else {

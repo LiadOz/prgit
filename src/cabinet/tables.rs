@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
 use crate::mirror::IntegrateStrategy;
 
@@ -93,8 +92,6 @@ impl Table for CommitChangeMapping {
 #[derive(Debug, Clone)]
 pub struct ShelveConfig {
     pub prgit_client_id: u64,
-    pub max_clients: usize,
-    pub timeout: Duration,
     pub clients_root: PathBuf,
 }
 
@@ -102,36 +99,7 @@ impl Table for ShelveConfig {
     const SCHEMA: &'static str = "
         CREATE TABLE IF NOT EXISTS shelve_config (
             prgit_client_id INTEGER PRIMARY KEY REFERENCES prgit_clients(id),
-            max_clients INTEGER NOT NULL,
-            timeout_secs INTEGER NOT NULL,
             clients_root TEXT NOT NULL
-        );
-    ";
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShelveClientStatus {
-    Available,
-    InUse,
-}
-
-#[derive(Debug, Clone)]
-pub struct ShelveClientRecord {
-    pub id: u64,
-    pub prgit_client_id: u64,
-    pub client_name: String,
-    pub status: ShelveClientStatus,
-    pub locked_at: Option<i64>,
-}
-
-impl Table for ShelveClientRecord {
-    const SCHEMA: &'static str = "
-        CREATE TABLE IF NOT EXISTS shelve_clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
-            client_name TEXT NOT NULL UNIQUE,
-            status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'in_use')),
-            locked_at INTEGER
         );
     ";
 }

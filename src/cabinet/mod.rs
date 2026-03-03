@@ -4,4 +4,4 @@ mod tables;
 
 pub use prgit_client::{GitConfig, P4Config, PrgitClient};
 pub use database::Database;
-pub use tables::{BranchMapping, PrgitClientInfo, PrgitRepo, ShelveClientRecord, ShelveClientStatus, ShelveConfig, UserMapping};
+pub use tables::{BranchMapping, PrgitClientInfo, PrgitRepo, ShelveConfig, UserMapping};

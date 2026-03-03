@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use p4rs::P4;
 use rusqlite::Connection;
@@ -118,80 +117,16 @@ impl<'a> PrgitClient<'a> {
     pub fn shelve_config(&self) -> Option<ShelveConfig> {
         self.conn
             .query_row(
-                "SELECT prgit_client_id, max_clients, timeout_secs, clients_root FROM shelve_config WHERE prgit_client_id = ?1",
+                "SELECT prgit_client_id, clients_root FROM shelve_config WHERE prgit_client_id = ?1",
                 [self.client_id],
                 |row| {
                     Ok(ShelveConfig {
                         prgit_client_id: row.get::<_, i64>(0)? as u64,
-                        max_clients: row.get::<_, i64>(1)? as usize,
-                        timeout: Duration::from_secs(row.get::<_, i64>(2)? as u64),
-                        clients_root: PathBuf::from(row.get::<_, String>(3)?),
+                        clients_root: PathBuf::from(row.get::<_, String>(1)?),
                     })
                 },
             )
             .ok()
-    }
-
-    pub fn get_available_shelve_client(&self) -> Option<String> {
-        self.conn
-            .query_row(
-                "SELECT client_name FROM shelve_clients WHERE prgit_client_id = ?1 AND status = 'available' LIMIT 1",
-                [self.client_id],
-                |row| row.get(0),
-            )
-            .ok()
-    }
-
-    pub fn get_timed_out_shelve_client(&self, timeout_millis: i64) -> Option<String> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()?
-            .as_millis() as i64;
-        self.conn
-            .query_row(
-                "SELECT client_name FROM shelve_clients WHERE prgit_client_id = ?1 AND status = 'in_use' AND locked_at < ?2 LIMIT 1",
-                rusqlite::params![self.client_id, now - timeout_millis],
-                |row| row.get(0),
-            )
-            .ok()
-    }
-
-    pub fn count_shelve_clients(&self) -> usize {
-        self.conn
-            .query_row(
-                "SELECT COUNT(*) FROM shelve_clients WHERE prgit_client_id = ?1",
-                [self.client_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|v| v as usize)
-            .unwrap_or(0)
-    }
-
-    pub fn acquire_shelve_client(&self, client_name: &str) -> bool {
-        let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
-            return false;
-        };
-        self.conn
-            .execute(
-                "UPDATE shelve_clients SET status = 'in_use', locked_at = ?1 WHERE prgit_client_id = ?2 AND client_name = ?3",
-                rusqlite::params![now.as_millis() as i64, self.client_id, client_name],
-            )
-            .map(|n| n > 0)
-            .unwrap_or(false)
-    }
-
-    pub fn release_shelve_client(&self, client_name: &str) {
-        let _ = self.conn.execute(
-            "UPDATE shelve_clients SET status = 'available', locked_at = NULL WHERE prgit_client_id = ?1 AND client_name = ?2",
-            rusqlite::params![self.client_id, client_name],
-        );
-    }
-
-    pub fn register_shelve_client(&self, client_name: &str) {
-        let _ = self.conn.execute(
-            "INSERT INTO shelve_clients (prgit_client_id, client_name, status) VALUES (?1, ?2, 'available')",
-            rusqlite::params![self.client_id, client_name],
-        );
     }
 
     pub fn get_shelved_change_for_branch(&self, branch: &str) -> Option<usize> {

@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
 use rusqlite::Connection;
 
@@ -8,7 +7,7 @@ use crate::mirror::IntegrateStrategy;
 use super::prgit_client::PrgitClient;
 use super::tables::{
     BranchMapping, BranchShelveMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo,
-    ShelveClientRecord, ShelveConfig, Table, UserMapping,
+    ShelveConfig, Table, UserMapping,
 };
 
 pub struct Database {
@@ -20,7 +19,6 @@ impl Database {
         let conn = Connection::open(path)?;
         conn.execute_batch(PrgitClientInfo::SCHEMA)?;
         conn.execute_batch(ShelveConfig::SCHEMA)?;
-        conn.execute_batch(ShelveClientRecord::SCHEMA)?;
         conn.execute_batch(BranchMapping::SCHEMA)?;
         conn.execute_batch(UserMapping::SCHEMA)?;
         conn.execute_batch(PrgitRepo::SCHEMA)?;
@@ -152,14 +150,12 @@ impl Database {
     ) -> Result<Option<ShelveConfig>, rusqlite::Error> {
         self.conn
             .query_row(
-                "SELECT prgit_client_id, max_clients, timeout_secs, clients_root FROM shelve_config WHERE prgit_client_id = ?1",
+                "SELECT prgit_client_id, clients_root FROM shelve_config WHERE prgit_client_id = ?1",
                 [prgit_client_id],
                 |row| {
                     Ok(ShelveConfig {
                         prgit_client_id: row.get::<_, i64>(0)? as u64,
-                        max_clients: row.get::<_, i64>(1)? as usize,
-                        timeout: Duration::from_secs(row.get::<_, i64>(2)? as u64),
-                        clients_root: PathBuf::from(row.get::<_, String>(3)?),
+                        clients_root: PathBuf::from(row.get::<_, String>(1)?),
                     })
                 },
             )
@@ -173,13 +169,11 @@ impl Database {
     pub fn create_shelve_config(
         &self,
         prgit_client_id: u64,
-        max_clients: usize,
-        timeout: Duration,
         clients_root: &str,
     ) -> Result<(), rusqlite::Error> {
         self.conn.execute(
-            "INSERT INTO shelve_config (prgit_client_id, max_clients, timeout_secs, clients_root) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![prgit_client_id, max_clients as i64, timeout.as_secs() as i64, clients_root],
+            "INSERT INTO shelve_config (prgit_client_id, clients_root) VALUES (?1, ?2)",
+            rusqlite::params![prgit_client_id, clients_root],
         )?;
         Ok(())
     }
@@ -320,13 +314,11 @@ mod tests {
     fn create_and_get_shelve_config() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_shelve_config(client_id, 5, Duration::from_secs(300), "/shelve/clients")
+        db.create_shelve_config(client_id, "/shelve/clients")
             .unwrap();
 
         let config = db.get_shelve_config(client_id).unwrap().unwrap();
         assert_eq!(config.prgit_client_id, client_id);
-        assert_eq!(config.max_clients, 5);
-        assert_eq!(config.timeout, Duration::from_secs(300));
         assert_eq!(config.clients_root, PathBuf::from("/shelve/clients"));
     }
 
@@ -371,12 +363,12 @@ mod tests {
     }
 
     #[test]
-    fn shelve_config_timeout_preserved() {
+    fn shelve_config_clients_root_preserved() {
         let db = test_db();
         let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_shelve_config(client_id, 10, Duration::from_secs(3600), "/clients").unwrap();
+        db.create_shelve_config(client_id, "/my/clients").unwrap();
 
         let config = db.get_shelve_config(client_id).unwrap().unwrap();
-        assert_eq!(config.timeout.as_secs(), 3600);
+        assert_eq!(config.clients_root, PathBuf::from("/my/clients"));
     }
 }
