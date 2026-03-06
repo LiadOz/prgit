@@ -6,8 +6,11 @@ use std::fs;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use tempfile::TempDir;
+
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
 use testcontainers::{core::WaitFor, runners::SyncRunner, GenericImage};
 
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
 const DEFAULT_IMAGE: &str = "p4d-server";
 
 pub const ADMIN_USER: &str = "admin";
@@ -156,13 +159,132 @@ impl<'p> ChangelistBuilder<'p> {
     }
 }
 
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
 static CONTAINER_ID: Mutex<Option<String>> = Mutex::new(None);
 
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
 pub struct P4Server {
     pub port: u16,
     #[allow(dead_code)]
     container: Option<testcontainers::Container<GenericImage>>,
 }
+
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
+impl P4Server {
+    pub fn start() -> Self {
+        if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
+            let port = port_str
+                .parse()
+                .expect("P4RS_TEST_PORT must be a valid port number");
+            log::info!("Using external P4 server on port {}", port);
+            return Self { port, container: None };
+        }
+
+        let image = std::env::var("P4RS_TEST_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string());
+        let container = GenericImage::new(image, "latest".to_string())
+            .with_exposed_port(1666.into())
+            .with_wait_for(WaitFor::seconds(1))
+            .start()
+            .expect("Failed to start P4 server");
+
+        let port = container.get_host_port_ipv4(1666).expect("Failed to get container port");
+        Self::wait_for_p4_ready(port);
+        Self::setup_protections(port);
+        *CONTAINER_ID.lock().unwrap() = Some(container.id().to_string());
+        Self { port, container: Some(container) }
+    }
+}
+
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
+extern "C" fn cleanup_container() {
+    if let Some(id) = CONTAINER_ID.lock().ok().and_then(|mut g| g.take()) {
+        log::info!("Cleaning up P4 test container {}", id);
+        let _ = std::process::Command::new("docker").args(["rm", "-f", &id]).output();
+    }
+}
+
+#[cfg(all(feature = "testkit", not(feature = "testkit-local")))]
+pub static SERVER: LazyLock<P4Server> = LazyLock::new(|| {
+    unsafe { libc::atexit(cleanup_container) };
+    P4Server::start()
+});
+
+#[cfg(feature = "testkit-local")]
+static P4D_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+#[cfg(feature = "testkit-local")]
+pub struct P4Server {
+    pub port: u16,
+    #[allow(dead_code)]
+    child: Option<std::process::Child>,
+    #[allow(dead_code)]
+    p4_root: Option<TempDir>,
+}
+
+#[cfg(feature = "testkit-local")]
+impl P4Server {
+    fn find_available_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .expect("Failed to bind to ephemeral port");
+        listener.local_addr().unwrap().port()
+    }
+
+    pub fn start() -> Self {
+        if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
+            let port = port_str
+                .parse()
+                .expect("P4RS_TEST_PORT must be a valid port number");
+            log::info!("Using external P4 server on port {}", port);
+            return Self { port, child: None, p4_root: None };
+        }
+
+        let p4_root = TempDir::new().expect("Failed to create temp dir for p4d root");
+        let port = Self::find_available_port();
+
+        let child = std::process::Command::new("p4d")
+            .arg("-r")
+            .arg(p4_root.path())
+            .arg("-p")
+            .arg(format!("localhost:{}", port))
+            .arg("-q")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("Failed to start p4d - is it installed and in PATH?");
+
+        log::info!("Started local p4d on port {} (pid {})", port, child.id());
+        *P4D_PID.lock().unwrap() = Some(child.id());
+
+        Self::wait_for_p4_ready(port);
+        Self::setup_protections(port);
+        Self { port, child: Some(child), p4_root: Some(p4_root) }
+    }
+}
+
+#[cfg(feature = "testkit-local")]
+impl Drop for P4Server {
+    fn drop(&mut self) {
+        if let Some(ref mut child) = self.child {
+            log::info!("Stopping local p4d (pid {})", child.id());
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+#[cfg(feature = "testkit-local")]
+extern "C" fn cleanup_p4d() {
+    if let Some(pid) = P4D_PID.lock().ok().and_then(|mut g| g.take()) {
+        log::info!("Cleaning up local p4d process {}", pid);
+        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+    }
+}
+
+#[cfg(feature = "testkit-local")]
+pub static SERVER: LazyLock<P4Server> = LazyLock::new(|| {
+    unsafe { libc::atexit(cleanup_p4d) };
+    P4Server::start()
+});
 
 impl P4Server {
     fn wait_for_p4_ready(port: u16) {
@@ -194,29 +316,6 @@ impl P4Server {
         log::info!("Protections configured: admin has super access, others have write access");
     }
 
-    pub fn start() -> Self {
-        if let Ok(port_str) = std::env::var("P4RS_TEST_PORT") {
-            let port = port_str
-                .parse()
-                .expect("P4RS_TEST_PORT must be a valid port number");
-            log::info!("Using external P4 server on port {}", port);
-            return Self { port, container: None };
-        }
-
-        let image = std::env::var("P4RS_TEST_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string());
-        let container = GenericImage::new(image, "latest".to_string())
-            .with_exposed_port(1666.into())
-            .with_wait_for(WaitFor::seconds(1))
-            .start()
-            .expect("Failed to start P4 server");
-
-        let port = container.get_host_port_ipv4(1666).expect("Failed to get container port");
-        Self::wait_for_p4_ready(port);
-        Self::setup_protections(port);
-        *CONTAINER_ID.lock().unwrap() = Some(container.id().to_string());
-        Self { port, container: Some(container) }
-    }
-
     pub fn p4(&self) -> P4 {
         P4::new().port(format!("localhost:{}", self.port))
     }
@@ -229,15 +328,3 @@ impl P4Server {
         TestClient::new(self.p4())
     }
 }
-
-extern "C" fn cleanup_container() {
-    if let Some(id) = CONTAINER_ID.lock().ok().and_then(|mut g| g.take()) {
-        log::info!("Cleaning up P4 test container {}", id);
-        let _ = std::process::Command::new("docker").args(["rm", "-f", &id]).output();
-    }
-}
-
-pub static SERVER: LazyLock<P4Server> = LazyLock::new(|| {
-    unsafe { libc::atexit(cleanup_container) };
-    P4Server::start()
-});

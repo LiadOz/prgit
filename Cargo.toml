@@ -24,3 +24,6 @@ uuid = { version = "1", features = ["v4"] }
 cargo-llvm-cov = "0.6.21"
 p4rs = { path = "crates/p4rs", features = ["testkit"] }
 test-log = "0.2.19"
+
+[features]
+testkit-local = ["p4rs/testkit-local"]

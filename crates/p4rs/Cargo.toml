@@ -17,6 +17,7 @@ thiserror = "2.0.17"
 [features]
 extensible = []
 testkit = ["dep:testcontainers", "dep:tempfile", "dep:uuid", "dep:libc"]
+testkit-local = ["dep:tempfile", "dep:uuid", "dep:libc"]
 
 [dependencies.libc]
 version = "0.2"
