@@ -20,6 +20,10 @@ pub struct ShelveClient {
 }
 
 impl ShelveClient {
+    pub fn client_name(&self) -> &str {
+        &self.client_name
+    }
+
     pub fn new(p4: P4, client_name: &str, client_root: PathBuf) -> Result<Self, P4Error> {
         let p4 = p4.client_name(client_name);
         Self::cleanup_workspace(&p4, &client_root)?;

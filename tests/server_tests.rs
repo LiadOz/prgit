@@ -348,10 +348,15 @@ async fn test_push_to_synced_branch_rejected() {
         )
         .await
         .expect("response");
-    assert_eq!(
-        response.status(),
-        StatusCode::FORBIDDEN,
-        "Push to synced branch should be rejected"
+    // Now returns 200 with a git protocol error packet instead of 403
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let body_str = String::from_utf8_lossy(&body);
+    assert!(
+        body_str.contains("Push to synced branch"),
+        "Expected git error message about synced branch, got: {body_str}"
     );
 }
 
@@ -384,11 +389,14 @@ async fn test_push_to_feature_branch_not_rejected_as_forbidden() {
         )
         .await
         .expect("response");
-    // Should NOT be 403 (synced-branch protection) — may fail for other CGI reasons
-    assert_ne!(
-        response.status(),
-        StatusCode::FORBIDDEN,
-        "Push to feature branch should not be rejected as forbidden"
+    // Should not contain synced-branch rejection message
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let body_str = String::from_utf8_lossy(&body);
+    assert!(
+        !body_str.contains("Push to synced branch"),
+        "Push to feature branch should not be rejected as synced branch"
     );
 }
 

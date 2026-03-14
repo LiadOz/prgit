@@ -6,8 +6,7 @@ use crate::mirror::IntegrateStrategy;
 
 use super::prgit_client::PrgitClient;
 use super::tables::{
-    BranchShelveMapping, CommitChangeMapping, PrgitClientInfo, PrgitRepo,
-    ShelveConfig, Table, TicketMetadata, UserMapping,
+    PrgitClientInfo, PrgitRepo, ShelveConfig, Table, TicketMetadata, UserMapping,
 };
 
 pub struct Database {
@@ -25,8 +24,22 @@ impl Database {
         conn.execute_batch(ShelveConfig::SCHEMA)?;
         conn.execute_batch(UserMapping::SCHEMA)?;
         conn.execute_batch(PrgitRepo::SCHEMA)?;
-        conn.execute_batch(CommitChangeMapping::SCHEMA)?;
-        conn.execute_batch(BranchShelveMapping::SCHEMA)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS commit_change_mapping (
+                prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
+                change INTEGER NOT NULL,
+                commit_hash TEXT NOT NULL,
+                PRIMARY KEY (prgit_client_id, change)
+            );"
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS branch_shelve_mapping (
+                prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
+                branch TEXT NOT NULL,
+                shelved_change INTEGER NOT NULL,
+                PRIMARY KEY (prgit_client_id, branch)
+            );"
+        )?;
         conn.execute_batch(TicketMetadata::SCHEMA)?;
         Ok(Self { conn })
     }

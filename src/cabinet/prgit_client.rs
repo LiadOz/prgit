@@ -207,6 +207,10 @@ impl MirrorData for PrgitClient<'_> {
     fn max_changes_query(&self) -> Option<usize> {
         self.max_changes_query
     }
+
+    fn map_commit_to_change(&self, commit: &str, change: usize) {
+        self.map_commit_to_change(commit, change);
+    }
 }
 
 #[cfg(test)]

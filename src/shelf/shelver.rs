@@ -9,6 +9,11 @@ use crate::cabinet::PrgitClient;
 use super::client_pool::{get_shelve_client, ShelveClientError};
 use super::shelve_client::{FileAction, FileChange, ShelveClient};
 
+pub struct ShelveResult {
+    pub changelist: usize,
+    pub client_name: String,
+}
+
 pub struct Shelver<'a> {
     prgit_client: &'a PrgitClient<'a>,
     repo: Repository,
@@ -20,7 +25,7 @@ impl<'a> Shelver<'a> {
         Ok(Self { prgit_client, repo })
     }
 
-    pub fn shelve(&self, branch: &str, user_p4: &P4) -> Result<usize, ShelverError> {
+    pub fn shelve(&self, branch: &str, user_p4: &P4) -> Result<ShelveResult, ShelverError> {
         let branch_ref = self.repo.find_branch(branch, git2::BranchType::Local)?;
         let target_commit = branch_ref.get().peel_to_commit()?;
         let target_oid = target_commit.id();
@@ -38,11 +43,12 @@ impl<'a> Shelver<'a> {
         let existing_shelve = self.prgit_client.get_shelved_change_for_branch(branch);
 
         let handle = get_shelve_client(self.prgit_client, user_p4)?;
+        let client_name = handle.shelve_client.client_name().to_string();
         let shelve_cl = self.execute_shelve(&handle.shelve_client, base_change, &target_commit, &changes, &description, existing_shelve)?;
 
         self.prgit_client.set_shelved_change_for_branch(branch, shelve_cl);
 
-        Ok(shelve_cl)
+        Ok(ShelveResult { changelist: shelve_cl, client_name })
     }
 
     fn find_merge_base_and_change(&self, target_oid: git2::Oid) -> Result<(git2::Oid, usize), ShelverError> {
@@ -302,7 +308,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
         assert_eq!(described.description.trim(), "Add new file");
@@ -334,7 +340,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
         assert_eq!(described.description.trim(), "Edit file");
@@ -366,7 +372,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         assert_eq!(prgit_client.get_shelved_change_for_branch("feature"), Some(shelve_cl));
     }
@@ -450,7 +456,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let first_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let first_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         let feature_oid2 = create_feature_commit(
             &env.git_repo,
@@ -460,7 +466,7 @@ mod tests {
         );
         env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid2).unwrap(), true).unwrap();
 
-        let second_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let second_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         assert_eq!(first_cl, second_cl);
     }
@@ -501,7 +507,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap();
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).shelved().run().unwrap().single().unwrap();
         let files: Vec<&str> = described.files.iter()

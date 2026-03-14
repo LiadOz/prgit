@@ -28,6 +28,7 @@ pub trait MirrorData {
     fn p4_client(&self) -> &str;
     fn integrate_strategy(&self) -> IntegrateStrategy;
     fn max_changes_query(&self) -> Option<usize>;
+    fn map_commit_to_change(&self, commit: &str, change: usize);
 }
 
 #[derive(Debug)]
@@ -92,5 +93,9 @@ impl MirrorData for HashMapMirrorData {
 
     fn max_changes_query(&self) -> Option<usize> {
         self.max_changes_query
+    }
+
+    fn map_commit_to_change(&self, _commit: &str, _change: usize) {
+        // No-op for in-memory test data
     }
 }

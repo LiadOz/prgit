@@ -298,8 +298,8 @@ fn cmd_hook(
 
         let shelver = Shelver::new(&client_data)?;
         match shelver.shelve(branch, &user_p4) {
-            Ok(cl) => {
-                eprintln!("prgit: === Shelved as changelist {} ===", cl);
+            Ok(result) => {
+                eprintln!("prgit: === Shelved as changelist {} on client '{}' ===", result.changelist, result.client_name);
             }
             Err(e) => {
                 eprintln!("prgit: shelve failed: {}", e);

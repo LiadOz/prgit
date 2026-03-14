@@ -54,7 +54,8 @@ impl<M: MirrorData> Mirror<M> {
     fn process_change(&mut self, change: ChangeData) -> Result<(), MirrorError> {
         let ctx = self.fetch_change_context(&change)?;
         log::debug!("Attempting to create commit for change {change:?}");
-        self.create_commit(&change, &ctx)?;
+        let commit_hash = self.create_commit(&change, &ctx)?;
+        self.mirror_data.map_commit_to_change(&commit_hash, change.change);
         self.mirror_data.set_last_sync_change(change.change);
         Ok(())
     }
@@ -102,7 +103,7 @@ impl<M: MirrorData> Mirror<M> {
         Ok(user_info.email)
     }
 
-    fn create_commit(&self, change: &ChangeData, ctx: &ChangeContext) -> Result<(), MirrorError> {
+    fn create_commit(&self, change: &ChangeData, ctx: &ChangeContext) -> Result<String, MirrorError> {
         let mut builder = CommitBuilder::from_head(&self.repo)?;
         if let Some(branch) = self
             .mirror_data
@@ -152,7 +153,7 @@ impl<M: MirrorData> Mirror<M> {
         };
         let commit_hash = builder.commit(&change.user, &ctx.email, change.time, &change.desc, &metadata)?;
         log::debug!("Committed change {change:?} with hash {commit_hash}");
-        Ok(())
+        Ok(commit_hash.to_string())
     }
 
     fn file_mode(file_type: &p4rs::FileType) -> FileMode {

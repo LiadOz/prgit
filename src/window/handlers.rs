@@ -65,14 +65,11 @@ pub async fn handle_git_request(
         let refs = parse_ref_updates(&body_bytes);
         let synced_ref = format!("refs/heads/{}", repo_entry.config.synced_branch);
         if refs.iter().any(|(_, _, r)| r == &synced_ref) {
-            return (
-                StatusCode::FORBIDDEN,
-                format!(
-                    "Push to synced branch '{}' is not allowed",
-                    repo_entry.config.synced_branch
-                ),
-            )
-                .into_response();
+            let msg = format!(
+                "Push to synced branch '{}' is not allowed",
+                repo_entry.config.synced_branch
+            );
+            return git_error_response(&msg);
         }
         refs
     } else {
@@ -105,15 +102,29 @@ pub async fn handle_git_request(
         }
     };
 
-    let response = parse_cgi_response(&cgi_output);
+    let (cgi_status, cgi_headers, cgi_body) = parse_cgi_output(&cgi_output);
 
-    if is_receive_pack && response.status().is_success() {
+    if is_receive_pack && cgi_status.is_success() {
         if let Some(user_p4) = user_p4 {
-            shelve_branches(&state, repo_entry, &ref_updates, user_p4);
+            let result = shelve_branches(&state, repo_entry, &ref_updates, user_p4).await;
+            if !result.errors.is_empty() {
+                let msg = format!("Push succeeded but shelving failed:\n{}", result.errors.join("\n"));
+                log::error!("{msg}");
+                return git_error_response(&msg);
+            }
+            if !result.shelved.is_empty() {
+                let lines: Vec<String> = result
+                    .shelved
+                    .iter()
+                    .map(|(branch, cl, client)| format!("Shelved branch '{branch}' as CL {cl} on client '{client}'"))
+                    .collect();
+                let body = inject_sideband_messages(&cgi_body, &lines.join("\n"));
+                return build_response(cgi_status, &cgi_headers, body);
+            }
         }
     }
 
-    response
+    build_response(cgi_status, &cgi_headers, cgi_body.to_vec())
 }
 
 fn extract_basic_auth(headers: &HeaderMap) -> Option<(String, String)> {
@@ -220,12 +231,12 @@ fn spawn_cgi(
     Ok(output.stdout)
 }
 
-fn parse_cgi_response(raw: &[u8]) -> Response {
-    let mut headers = [httparse::EMPTY_HEADER; 16];
-    match httparse::parse_headers(raw, &mut headers) {
+fn parse_cgi_output(raw: &[u8]) -> (StatusCode, Vec<(String, Vec<u8>)>, &[u8]) {
+    let mut headers_buf = [httparse::EMPTY_HEADER; 16];
+    match httparse::parse_headers(raw, &mut headers_buf) {
         Ok(httparse::Status::Complete((body_offset, parsed_headers))) => {
             let mut status = StatusCode::OK;
-            let mut builder = Response::builder();
+            let mut headers = Vec::new();
             for h in parsed_headers {
                 if h.name.eq_ignore_ascii_case("Status") {
                     status = std::str::from_utf8(h.value)
@@ -235,27 +246,69 @@ fn parse_cgi_response(raw: &[u8]) -> Response {
                         .and_then(|c| StatusCode::from_u16(c).ok())
                         .unwrap_or(StatusCode::OK);
                 } else {
-                    builder = builder.header(h.name, h.value);
+                    headers.push((h.name.to_string(), h.value.to_vec()));
                 }
             }
-            match builder
-                .status(status)
-                .body(Body::from(raw[body_offset..].to_vec()))
-            {
-                Ok(resp) => resp,
-                Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            }
+            (status, headers, &raw[body_offset..])
         }
-        _ => (StatusCode::OK, raw.to_vec()).into_response(),
+        _ => (StatusCode::OK, Vec::new(), raw),
     }
 }
 
-fn shelve_branches(
+fn build_response(status: StatusCode, headers: &[(String, Vec<u8>)], body: Vec<u8>) -> Response {
+    let mut builder = Response::builder().status(status);
+    for (name, value) in headers {
+        builder = builder.header(name.as_str(), value.as_slice());
+    }
+    builder
+        .body(Body::from(body))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// Build a git smart-HTTP error response that `git push` will display to the user.
+fn git_error_response(message: &str) -> Response {
+    let mut body = Vec::new();
+    for line in message.lines() {
+        let err_line = format!("ERR {line}");
+        let pkt = format!("{:04x}\x03{err_line}", err_line.len() + 5);
+        body.extend_from_slice(pkt.as_bytes());
+    }
+    body.extend_from_slice(b"0000");
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/x-git-receive-pack-result")
+        .body(Body::from(body))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// Inject sideband progress messages (band=2) before the final flush packet in git protocol body.
+fn inject_sideband_messages(body: &[u8], message: &str) -> Vec<u8> {
+    let mut result = body.to_vec();
+    let flush = b"0000";
+    if let Some(pos) = result.windows(4).rposition(|w| w == flush) {
+        let mut info = Vec::new();
+        for line in message.lines() {
+            let msg = format!("remote: {line}\n");
+            let pkt = format!("{:04x}\x02{msg}", msg.len() + 5);
+            info.extend_from_slice(pkt.as_bytes());
+        }
+        result.splice(pos..pos, info);
+    }
+    result
+}
+
+struct HandlerShelveResult {
+    shelved: Vec<(String, usize, String)>,
+    errors: Vec<String>,
+}
+
+async fn shelve_branches(
     state: &Arc<AppState>,
     repo_entry: &RepoEntry,
     ref_updates: &[(String, String, String)],
     user_p4: P4,
-) {
+) -> HandlerShelveResult {
     let zero_sha = "0000000000000000000000000000000000000000";
     let synced_ref = format!("refs/heads/{}", repo_entry.config.synced_branch);
     let branches: Vec<String> = ref_updates
@@ -265,17 +318,23 @@ fn shelve_branches(
         .collect();
 
     if branches.is_empty() {
-        return;
+        return HandlerShelveResult { shelved: Vec::new(), errors: Vec::new() };
     }
 
     let db_path = state.db_path.clone();
     let client_id = repo_entry.client_id;
-    let p4client = repo_entry.config.p4client.clone();
-    tokio::task::spawn_blocking(move || {
-        if let Err(e) = do_shelve(&db_path, client_id, &branches, &user_p4) {
-            log::error!("Shelving failed for client '{p4client}': {e}");
-        }
-    });
+    let result = tokio::task::spawn_blocking(move || {
+        do_shelve(&db_path, client_id, &branches, &user_p4)
+    })
+    .await;
+
+    match result {
+        Ok(r) => r,
+        Err(e) => HandlerShelveResult {
+            shelved: Vec::new(),
+            errors: vec![format!("Shelve task panicked: {e}")],
+        },
+    }
 }
 
 fn do_shelve(
@@ -283,17 +342,36 @@ fn do_shelve(
     client_id: u64,
     branches: &[String],
     user_p4: &P4,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let db = Database::open(db_path)?;
-    let client = db
-        .client(client_id)?
-        .ok_or_else(|| format!("Client id={client_id} not found"))?;
-    let shelver = Shelver::new(&client)?;
+) -> HandlerShelveResult {
+    let mut shelved = Vec::new();
+    let mut errors = Vec::new();
+
+    let db = match Database::open(db_path) {
+        Ok(db) => db,
+        Err(e) => return HandlerShelveResult { shelved, errors: vec![format!("Database error: {e}")] },
+    };
+    let client = match db.client(client_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return HandlerShelveResult { shelved, errors: vec![format!("Client id={client_id} not found")] },
+        Err(e) => return HandlerShelveResult { shelved, errors: vec![format!("Database error: {e}")] },
+    };
+    let shelver = match Shelver::new(&client) {
+        Ok(s) => s,
+        Err(e) => return HandlerShelveResult { shelved, errors: vec![format!("Shelver init error: {e}")] },
+    };
+
     for branch in branches {
         match shelver.shelve(branch, user_p4) {
-            Ok(cl) => log::info!("Shelved branch '{branch}' as CL {cl}"),
-            Err(e) => log::error!("Failed to shelve branch '{branch}': {e}"),
+            Ok(result) => {
+                log::info!("Shelved branch '{branch}' as CL {} on client '{}'", result.changelist, result.client_name);
+                shelved.push((branch.clone(), result.changelist, result.client_name));
+            }
+            Err(e) => {
+                let msg = format!("Failed to shelve branch '{branch}': {e}");
+                log::error!("{msg}");
+                errors.push(msg);
+            }
         }
     }
-    Ok(())
+    HandlerShelveResult { shelved, errors }
 }
