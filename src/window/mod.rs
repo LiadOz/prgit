@@ -114,10 +114,11 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
     for repo_config in &config.repos {
         let bare_path = repo_config.bare_repo_path(&config.data_dir);
 
-        if bare_path.exists() {
-            Repository::open_bare(&bare_path)
+        let repo = if bare_path.exists() {
+            let repo = Repository::open_bare(&bare_path)
                 .map_err(WindowError::git(format!("Failed to open repo at {}", bare_path.display())))?;
             log::info!("Opened existing repo: {}", bare_path.display());
+            repo
         } else {
             let parent = bare_path
                 .parent()
@@ -131,7 +132,13 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
                 .set_bool("http.receivepack", true)
                 .map_err(WindowError::git("Failed to set http.receivepack"))?;
             log::info!("Created bare repo: {}", bare_path.display());
-        }
+            repo
+        };
+
+        // Ensure HEAD points to the synced branch so mirror commits land there
+        let synced_head = format!("refs/heads/{}", repo_config.synced_branch);
+        repo.set_head(&synced_head)
+            .map_err(WindowError::git("Failed to set HEAD to synced branch"))?;
 
         let client_id = match db.client_by_name(&repo_config.p4client)? {
             Some(client) => {
