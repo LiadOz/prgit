@@ -1,0 +1,204 @@
+mod handlers;
+mod mirror_task;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use axum::routing::get;
+use axum::Router;
+use git2::Repository;
+use serde::Deserialize;
+
+use crate::cabinet::Database;
+use crate::mirror::IntegrateStrategy;
+
+#[derive(Debug, thiserror::Error)]
+pub enum WindowError {
+    #[error("git-http-backend not found at {0}")]
+    BackendNotFound(PathBuf),
+    #[error("{context}: {source}")]
+    Io {
+        context: String,
+        source: std::io::Error,
+    },
+    #[error("{context}: {source}")]
+    Git {
+        context: String,
+        source: git2::Error,
+    },
+    #[error("database error: {0}")]
+    Database(#[from] rusqlite::Error),
+    #[error("{0}")]
+    Other(String),
+}
+
+impl WindowError {
+    fn io(context: impl Into<String>) -> impl FnOnce(std::io::Error) -> Self {
+        let context = context.into();
+        move |source| Self::Io { context, source }
+    }
+
+    fn git(context: impl Into<String>) -> impl FnOnce(git2::Error) -> Self {
+        let context = context.into();
+        move |source| Self::Git { context, source }
+    }
+}
+
+type Result<T> = std::result::Result<T, WindowError>;
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub listen: String,
+    pub data_dir: PathBuf,
+    pub repos: Vec<RepoConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RepoConfig {
+    pub group: String,
+    pub name: String,
+    pub p4port: String,
+    pub p4client: String,
+    pub synced_branch: String,
+    pub mirror_interval_secs: u64,
+    pub max_changes: usize,
+}
+
+impl RepoConfig {
+    fn url_path(&self) -> String {
+        format!("{}/{}", self.group, self.name)
+    }
+
+    fn bare_repo_path(&self, data_dir: &std::path::Path) -> PathBuf {
+        data_dir
+            .join("repos")
+            .join(&self.group)
+            .join(format!("{}.git", self.name))
+    }
+}
+
+pub(crate) struct RepoEntry {
+    pub config: RepoConfig,
+    pub bare_repo_path: PathBuf,
+    pub client_id: u64,
+}
+
+pub(crate) struct AppState {
+    pub repos: HashMap<String, RepoEntry>,
+    pub db_path: String,
+    pub git_http_backend: PathBuf,
+}
+
+fn to_str(path: &std::path::Path) -> Result<&str> {
+    path.to_str()
+        .ok_or_else(|| WindowError::Other(format!("Non-UTF8 path: {}", path.display())))
+}
+
+fn find_git_http_backend() -> Result<PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["--exec-path"])
+        .output()
+        .map_err(WindowError::io("Failed to run git --exec-path"))?;
+    let exec_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let backend = PathBuf::from(&exec_path).join("git-http-backend");
+    if !backend.exists() {
+        return Err(WindowError::BackendNotFound(backend));
+    }
+    log::info!("Found git-http-backend at {}", backend.display());
+    Ok(backend)
+}
+
+fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, RepoEntry>> {
+    let mut repos = HashMap::new();
+    for repo_config in &config.repos {
+        let bare_path = repo_config.bare_repo_path(&config.data_dir);
+
+        if bare_path.exists() {
+            Repository::open_bare(&bare_path)
+                .map_err(WindowError::git(format!("Failed to open repo at {}", bare_path.display())))?;
+            log::info!("Opened existing repo: {}", bare_path.display());
+        } else {
+            let parent = bare_path
+                .parent()
+                .ok_or_else(|| WindowError::Other(format!("Invalid bare repo path: {}", bare_path.display())))?;
+            std::fs::create_dir_all(parent)
+                .map_err(WindowError::io("Failed to create repo directory"))?;
+            let repo = Repository::init_bare(&bare_path)
+                .map_err(WindowError::git(format!("Failed to init bare repo at {}", bare_path.display())))?;
+            repo.config()
+                .map_err(WindowError::git("Failed to open repo config"))?
+                .set_bool("http.receivepack", true)
+                .map_err(WindowError::git("Failed to set http.receivepack"))?;
+            log::info!("Created bare repo: {}", bare_path.display());
+        }
+
+        let client_id = match db.client_by_name(&repo_config.p4client)? {
+            Some(client) => {
+                log::info!(
+                    "Using existing client '{}' (id={})",
+                    repo_config.p4client,
+                    client.client_id
+                );
+                client.client_id
+            }
+            None => {
+                let id = db.create_prgit_client(
+                    &repo_config.p4client,
+                    "p4",
+                    &repo_config.p4port,
+                    "",
+                )?;
+                db.create_prgit_repo(
+                    id,
+                    to_str(&bare_path)?,
+                    &repo_config.synced_branch,
+                    IntegrateStrategy::MergeOurs,
+                    Some(repo_config.max_changes),
+                )?;
+                let shelve_root = config.data_dir.join("shelve_clients");
+                std::fs::create_dir_all(&shelve_root).ok();
+                db.create_shelve_config(id, to_str(&shelve_root)?)?;
+                log::info!("Created client '{}' (id={id})", repo_config.p4client);
+                id
+            }
+        };
+
+        repos.insert(
+            repo_config.url_path(),
+            RepoEntry {
+                config: repo_config.clone(),
+                bare_repo_path: bare_path,
+                client_id,
+            },
+        );
+    }
+    Ok(repos)
+}
+
+pub fn build_app(config: &ServerConfig) -> Result<Router> {
+    let git_http_backend = find_git_http_backend()?;
+
+    std::fs::create_dir_all(&config.data_dir)
+        .map_err(WindowError::io(format!("Failed to create data_dir {}", config.data_dir.display())))?;
+
+    let db_path = config.data_dir.join("prgit.db");
+    let db_path_str = to_str(&db_path)?;
+    let db = Database::open(db_path_str)?;
+
+    let repos = init_repos(config, &db)?;
+    let state = Arc::new(AppState {
+        repos,
+        db_path: db_path_str.to_string(),
+        git_http_backend,
+    });
+
+    Ok(Router::new()
+        .route("/api/health", get(handlers::health))
+        .fallback(handlers::handle_git_request)
+        .with_state(state))
+}
+
+pub fn spawn_mirror_tasks(config: &ServerConfig) {
+    mirror_task::spawn_all(config);
+}

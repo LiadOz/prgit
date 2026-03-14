@@ -2,3 +2,4 @@
 pub mod cabinet;
 pub mod mirror;
 pub mod shelf;
+pub mod window;
