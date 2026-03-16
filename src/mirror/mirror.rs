@@ -136,13 +136,12 @@ impl<M: MirrorData> Mirror<M> {
             let mode = Self::file_mode(&file.file_type);
 
             match file.action {
-                FileAction::Add | FileAction::Edit | FileAction::MoveAdd => {
+                FileAction::Add | FileAction::Edit | FileAction::MoveAdd | FileAction::Branch | FileAction::Integrate => {
                     builder.upsert(path_in_repo, &path_in_temp, mode)?;
                 }
                 FileAction::Delete | FileAction::MoveDelete => {
                     builder.remove(path_in_repo);
                 }
-                FileAction::Branch | FileAction::Integrate => {}
             }
         }
 
