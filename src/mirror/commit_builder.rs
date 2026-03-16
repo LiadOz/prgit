@@ -14,6 +14,7 @@ pub struct CommitMetadata {
 pub struct CommitBuilder<'r> {
     repo: &'r Repository,
     tree_builder: TreeUpdateBuilder,
+    pending_removes: Vec<String>,
     parents: Vec<Oid>,
 }
 
@@ -22,6 +23,7 @@ impl<'r> CommitBuilder<'r> {
         Self {
             repo,
             tree_builder: TreeUpdateBuilder::new(),
+            pending_removes: Vec::new(),
             parents: Vec::new(),
         }
     }
@@ -68,7 +70,7 @@ impl<'r> CommitBuilder<'r> {
     }
 
     pub fn remove(&mut self, path: &str) {
-        self.tree_builder.remove(path);
+        self.pending_removes.push(path.to_string());
     }
 
     pub fn commit(
@@ -121,6 +123,97 @@ impl<'r> CommitBuilder<'r> {
                 self.repo.find_tree(empty_oid)?
             }
         };
+        for path in &self.pending_removes {
+            if base_tree.get_path(Path::new(path)).is_ok() {
+                self.tree_builder.remove(path);
+            } else {
+                log::warn!("Skipping remove of '{path}': not in tree");
+            }
+        }
         Ok(self.tree_builder.create_updated(self.repo, &base_tree)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use tempfile::TempDir;
+
+    fn setup_repo_with_file(dir: &TempDir) -> Repository {
+        let repo = Repository::init_bare(dir.path()).unwrap();
+        let blob_oid = repo.blob(b"hello").unwrap();
+        let tree_oid = {
+            let mut tb = repo.treebuilder(None).unwrap();
+            tb.insert("existing.txt", blob_oid, FileMode::Blob.into())
+                .unwrap();
+            tb.write().unwrap()
+        };
+        {
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let sig = Signature::now("test", "test@test.com").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        repo
+    }
+
+    fn dummy_metadata() -> CommitMetadata {
+        CommitMetadata {
+            change: 1,
+            old_change: None,
+            client: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn remove_existing_file_produces_correct_tree() {
+        let dir = TempDir::new().unwrap();
+        let repo = setup_repo_with_file(&dir);
+
+        let mut builder = CommitBuilder::from_head(&repo).unwrap();
+        builder.remove("existing.txt");
+        let oid = builder
+            .commit("test", "test@test.com", Utc::now(), "delete", &dummy_metadata())
+            .unwrap();
+
+        let commit = repo.find_commit(oid).unwrap();
+        let tree = commit.tree().unwrap();
+        assert!(
+            tree.get_name("existing.txt").is_none(),
+            "File should be removed from tree"
+        );
+    }
+
+    #[test]
+    fn remove_nonexistent_file_succeeds() {
+        let dir = TempDir::new().unwrap();
+        let repo = setup_repo_with_file(&dir);
+
+        let mut builder = CommitBuilder::from_head(&repo).unwrap();
+        builder.remove("no_such_file.txt");
+        let result = builder.commit("test", "test@test.com", Utc::now(), "noop delete", &dummy_metadata());
+
+        assert!(result.is_ok(), "Removing non-existent file should not error");
+    }
+
+    #[test]
+    fn double_remove_succeeds() {
+        let dir = TempDir::new().unwrap();
+        let repo = setup_repo_with_file(&dir);
+
+        // First commit: remove the file
+        let mut builder = CommitBuilder::from_head(&repo).unwrap();
+        builder.remove("existing.txt");
+        builder
+            .commit("test", "test@test.com", Utc::now(), "delete", &dummy_metadata())
+            .unwrap();
+
+        // Second commit: remove the same file again (already gone)
+        let mut builder2 = CommitBuilder::from_head(&repo).unwrap();
+        builder2.remove("existing.txt");
+        let result = builder2.commit("test", "test@test.com", Utc::now(), "double delete", &dummy_metadata());
+
+        assert!(result.is_ok(), "Double-remove should not error");
     }
 }
