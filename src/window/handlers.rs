@@ -10,7 +10,7 @@ use base64::prelude::*;
 use p4rs::P4;
 
 use crate::cabinet::Database;
-use crate::shelf::Shelver;
+use crate::shelf::{PendingShelve, Shelver};
 
 use super::{AppState, RepoEntry};
 
@@ -113,10 +113,17 @@ pub async fn handle_git_request(
                 return git_error_response(&msg);
             }
             if !result.shelved.is_empty() {
+                let is_async = repo_entry.config.shelve_async();
                 let lines: Vec<String> = result
                     .shelved
                     .iter()
-                    .map(|(branch, cl, client)| format!("Shelved branch '{branch}' as CL {cl} on client '{client}'"))
+                    .map(|(branch, cl, client)| {
+                        if is_async {
+                            format!("Shelving branch '{branch}' as CL {cl} on client '{client}' (in background)")
+                        } else {
+                            format!("Shelved branch '{branch}' as CL {cl} on client '{client}'")
+                        }
+                    })
                     .collect();
                 let body = inject_sideband_messages(&cgi_body, &lines.join("\n"));
                 return build_response(cgi_status, &cgi_headers, body);
@@ -323,17 +330,41 @@ async fn shelve_branches(
 
     let db_path = state.db_path.clone();
     let client_id = repo_entry.client_id;
-    let result = tokio::task::spawn_blocking(move || {
-        do_shelve(&db_path, client_id, &branches, &user_p4)
-    })
-    .await;
+    let async_shelve = repo_entry.config.shelve_async();
 
-    match result {
-        Ok(r) => r,
-        Err(e) => HandlerShelveResult {
-            shelved: Vec::new(),
-            errors: vec![format!("Shelve task panicked: {e}")],
-        },
+    if async_shelve {
+        let result = tokio::task::spawn_blocking(move || {
+            do_prepare_shelve(&db_path, client_id, &branches, &user_p4)
+        })
+        .await;
+
+        match result {
+            Ok((handler_result, pending)) => {
+                if !pending.is_empty() {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        complete_pending_shelves(pending);
+                    });
+                }
+                handler_result
+            }
+            Err(e) => HandlerShelveResult {
+                shelved: Vec::new(),
+                errors: vec![format!("Shelve task panicked: {e}")],
+            },
+        }
+    } else {
+        let result = tokio::task::spawn_blocking(move || {
+            do_shelve(&db_path, client_id, &branches, &user_p4)
+        })
+        .await;
+
+        match result {
+            Ok(r) => r,
+            Err(e) => HandlerShelveResult {
+                shelved: Vec::new(),
+                errors: vec![format!("Shelve task panicked: {e}")],
+            },
+        }
     }
 }
 
@@ -374,4 +405,53 @@ fn do_shelve(
         }
     }
     HandlerShelveResult { shelved, errors }
+}
+
+fn do_prepare_shelve(
+    db_path: &str,
+    client_id: u64,
+    branches: &[String],
+    user_p4: &P4,
+) -> (HandlerShelveResult, Vec<(String, PendingShelve)>) {
+    let mut shelved = Vec::new();
+    let mut pending = Vec::new();
+    let mut errors = Vec::new();
+
+    let db = match Database::open(db_path) {
+        Ok(db) => db,
+        Err(e) => return (HandlerShelveResult { shelved, errors: vec![format!("Database error: {e}")] }, pending),
+    };
+    let client = match db.client(client_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return (HandlerShelveResult { shelved, errors: vec![format!("Client id={client_id} not found")] }, pending),
+        Err(e) => return (HandlerShelveResult { shelved, errors: vec![format!("Database error: {e}")] }, pending),
+    };
+    let shelver = match Shelver::new(&client) {
+        Ok(s) => s,
+        Err(e) => return (HandlerShelveResult { shelved, errors: vec![format!("Shelver init error: {e}")] }, pending),
+    };
+
+    for branch in branches {
+        match shelver.prepare_shelve(branch, user_p4) {
+            Ok((result, pend)) => {
+                log::info!("Prepared shelve for branch '{branch}' as CL {} (async)", result.changelist);
+                shelved.push((branch.clone(), result.changelist, result.client_name));
+                pending.push((branch.clone(), pend));
+            }
+            Err(e) => {
+                let msg = format!("Failed to prepare shelve for branch '{branch}': {e}");
+                log::error!("{msg}");
+                errors.push(msg);
+            }
+        }
+    }
+    (HandlerShelveResult { shelved, errors }, pending)
+}
+
+fn complete_pending_shelves(pending: Vec<(String, PendingShelve)>) {
+    for (branch, pend) in pending {
+        if let Err(e) = pend.complete() {
+            log::error!("Background shelve for branch '{branch}' failed: {e}");
+        }
+    }
 }

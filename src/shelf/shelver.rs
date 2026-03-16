@@ -6,12 +6,36 @@ use thiserror::Error;
 
 use crate::cabinet::PrgitClient;
 
-use super::client_pool::{get_shelve_client, ShelveClientError};
+use super::client_pool::{get_shelve_client, ShelveClientError, ShelveClientHandle};
 use super::shelve_client::{FileAction, FileChange, ShelveClient};
 
 pub struct ShelveResult {
     pub changelist: usize,
     pub client_name: String,
+}
+
+pub struct PendingShelve {
+    handle: ShelveClientHandle,
+    changelist: usize,
+    base_change: usize,
+    work_dir: tempfile::TempDir,
+    changes: Vec<ChangedFile>,
+}
+
+impl PendingShelve {
+    pub fn complete(self) -> Result<(), ShelverError> {
+        let file_changes: Vec<FileChange> = self.changes
+            .iter()
+            .map(|c| FileChange { path: &c.path, action: c.action })
+            .collect();
+        self.handle.shelve_client.shelve_changelist(
+            self.changelist,
+            self.base_change,
+            self.work_dir.path(),
+            &file_changes,
+        )?;
+        Ok(())
+    }
 }
 
 pub struct Shelver<'a> {
@@ -49,6 +73,43 @@ impl<'a> Shelver<'a> {
         self.prgit_client.set_shelved_change_for_branch(branch, shelve_cl);
 
         Ok(ShelveResult { changelist: shelve_cl, client_name })
+    }
+
+    pub fn prepare_shelve(&self, branch: &str, user_p4: &P4) -> Result<(ShelveResult, PendingShelve), ShelverError> {
+        let branch_ref = self.repo.find_branch(branch, git2::BranchType::Local)?;
+        let target_commit = branch_ref.get().peel_to_commit()?;
+        let target_oid = target_commit.id();
+
+        let (base_oid, base_change) = self.find_merge_base_and_change(target_oid)?;
+        let base_commit = self.repo.find_commit(base_oid)?;
+        let target_commit = self.repo.find_commit(target_oid)?;
+
+        let changes = self.compute_changes(&base_commit, &target_commit)?;
+        if changes.is_empty() {
+            return Err(ShelverError::NoChanges);
+        }
+
+        let description = target_commit.message().unwrap_or("Shelved from git").to_string();
+        let existing_shelve = self.prgit_client.get_shelved_change_for_branch(branch);
+
+        let handle = get_shelve_client(self.prgit_client, user_p4)?;
+        let client_name = handle.shelve_client.client_name().to_string();
+
+        let changelist = handle.shelve_client.create_or_reuse_changelist(&description, existing_shelve)?;
+        let work_dir = self.extract_files_to_temp(&target_commit, &changes)?;
+
+        self.prgit_client.set_shelved_change_for_branch(branch, changelist);
+
+        let result = ShelveResult { changelist, client_name };
+        let pending = PendingShelve {
+            handle,
+            changelist,
+            base_change,
+            work_dir,
+            changes,
+        };
+
+        Ok((result, pending))
     }
 
     fn find_merge_base_and_change(&self, target_oid: git2::Oid) -> Result<(git2::Oid, usize), ShelverError> {
@@ -516,5 +577,123 @@ mod tests {
 
         assert!(files.contains(&"old_name.txt"), "Should delete old file");
         assert!(files.contains(&"new_name.txt"), "Should add new file");
+    }
+
+    #[test]
+    fn test_prepare_shelve_creates_changelist() {
+        let env = setup_test_env();
+
+        let base_change = env.p4_client.changelist("Initial")
+            .add_file("file.txt", b"content")
+            .submit().unwrap().submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("file.txt", b"content")],
+            "Initial",
+        );
+
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("new.txt", b"new content")],
+            "Add new file",
+        );
+        env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid).unwrap(), false).unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let (result, _pending) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+
+        // CL should exist as a pending changelist
+        assert!(result.changelist > 0);
+        assert!(!result.client_name.is_empty());
+
+        // Branch mapping should be stored
+        assert_eq!(prgit_client.get_shelved_change_for_branch("feature"), Some(result.changelist));
+    }
+
+    #[test]
+    fn test_prepare_then_complete_shelve() {
+        let env = setup_test_env();
+
+        let base_change = env.p4_client.changelist("Initial")
+            .add_file("file.txt", b"content")
+            .submit().unwrap().submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("file.txt", b"content")],
+            "Initial",
+        );
+
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("new.txt", b"new content")],
+            "Add new file via prepare",
+        );
+        env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid).unwrap(), false).unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let (result, pending) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+
+        // Complete the shelve
+        pending.complete().unwrap();
+
+        // Verify the shelve was actually created in P4
+        let described = env.p4_client.p4.describe(&[result.changelist]).run().unwrap().single().unwrap();
+        assert_eq!(described.description.trim(), "Add new file via prepare");
+    }
+
+    #[test]
+    fn test_prepare_shelve_reuses_existing_changelist() {
+        let env = setup_test_env();
+
+        let base_change = env.p4_client.changelist("Initial")
+            .add_file("file.txt", b"content")
+            .submit().unwrap().submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("file.txt", b"content")],
+            "Initial",
+        );
+
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("new.txt", b"first version")],
+            "First shelve",
+        );
+        env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid).unwrap(), false).unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+
+        // First prepare + complete
+        let (result1, pending1) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        pending1.complete().unwrap();
+
+        // Second prepare should reuse the same CL
+        let feature_oid2 = create_feature_commit(
+            &env.git_repo,
+            feature_oid,
+            &[("new.txt", b"second version")],
+            "Second shelve",
+        );
+        env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid2).unwrap(), true).unwrap();
+
+        let (result2, pending2) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        pending2.complete().unwrap();
+
+        assert_eq!(result1.changelist, result2.changelist);
     }
 }

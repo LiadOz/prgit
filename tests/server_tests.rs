@@ -150,6 +150,7 @@ impl TestServer {
                 synced_branch: "main".to_string(),
                 mirror_interval_secs: 3600,
                 max_changes: 100,
+                shelve: None,
             }],
         };
         Self { data_dir, config }

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use p4rs::{P4, P4Error, P4Command, ChangeSpec, ChangeType, ChangelistBuilder};
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum FileAction {
     Add,
     Edit,
@@ -127,15 +127,24 @@ impl ShelveClient {
         builder.flush()
     }
 
-    pub fn run(&self, base_change: usize, base_dir: &Path, changes: &[FileChange], description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
+    pub fn create_or_reuse_changelist(&self, description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
+        match original_change {
+            Some(cl) => Ok(cl),
+            None => self.create_empty_change(description),
+        }
+    }
+
+    pub fn shelve_changelist(&self, cl: usize, base_change: usize, base_dir: &Path, changes: &[FileChange]) -> Result<(), P4Error> {
         self.sync(base_change, &changes.iter().map(|c| c.path).collect::<Vec<&str>>())?;
-        let cl = match original_change {
-            Some(cl) => cl,
-            None => self.create_empty_change(description)?,
-        };
         self.apply_changes(cl, base_dir, changes)?;
         self.p4.shelve().set(cl).replace().run()?;
         Self::cleanup_workspace(&self.p4, &self.client_root)?;
+        Ok(())
+    }
+
+    pub fn run(&self, base_change: usize, base_dir: &Path, changes: &[FileChange], description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
+        let cl = self.create_or_reuse_changelist(description, original_change)?;
+        self.shelve_changelist(cl, base_change, base_dir, changes)?;
         Ok(cl)
     }
 }

@@ -54,6 +54,12 @@ pub struct ServerConfig {
     pub repos: Vec<RepoConfig>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ShelveSettings {
+    #[serde(default, rename = "async")]
+    pub r#async: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RepoConfig {
     pub group: String,
@@ -63,9 +69,15 @@ pub struct RepoConfig {
     pub synced_branch: String,
     pub mirror_interval_secs: u64,
     pub max_changes: usize,
+    #[serde(default)]
+    pub shelve: Option<ShelveSettings>,
 }
 
 impl RepoConfig {
+    pub fn shelve_async(&self) -> bool {
+        self.shelve.as_ref().map_or(false, |s| s.r#async)
+    }
+
     fn url_path(&self) -> String {
         format!("{}/{}", self.group, self.name)
     }
@@ -208,4 +220,87 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
 
 pub fn spawn_mirror_tasks(config: &ServerConfig) {
     mirror_task::spawn_all(config);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_without_shelve_section() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.repos[0].shelve_async());
+        assert!(config.repos[0].shelve.is_none());
+    }
+
+    #[test]
+    fn test_config_with_shelve_async_true() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve:
+      async: true
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.repos[0].shelve_async());
+    }
+
+    #[test]
+    fn test_config_with_shelve_async_false() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve:
+      async: false
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.repos[0].shelve_async());
+    }
+
+    #[test]
+    fn test_config_with_empty_shelve_section() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve: {}
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.repos[0].shelve_async());
+    }
 }
