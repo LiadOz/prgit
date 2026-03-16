@@ -43,6 +43,7 @@ impl<M: MirrorData> Mirror<M> {
         let mut cmd = self
             .p4
             .changes(paths)
+            .long()
             .since_changelist(self.mirror_data.last_sync_change() + 1)
             .reverse();
         if let Some(max) = self.mirror_data.max_changes_query() {
@@ -54,7 +55,12 @@ impl<M: MirrorData> Mirror<M> {
     fn process_change(&mut self, change: ChangeData) -> Result<(), MirrorError> {
         let ctx = self.fetch_change_context(&change)?;
         log::debug!("Attempting to create commit for change {change:?}");
-        let commit_hash = self.create_commit(&change, &ctx)?;
+        let commit_hash = self.create_commit(&change, &ctx).map_err(|e| {
+            MirrorError::MirrorFailed(format!(
+                "Failed to commit change {} (user={}, client={}, files={}, desc={:?}): {}",
+                change.change, change.user, change.client, ctx.file_data.len(), change.desc, e
+            ))
+        })?;
         self.mirror_data.map_commit_to_change(&commit_hash, change.change);
         self.mirror_data.set_last_sync_change(change.change);
         Ok(())
