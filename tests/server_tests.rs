@@ -589,3 +589,44 @@ async fn test_git_clone_via_server() {
         "world"
     );
 }
+
+// ============================================================
+// Shelve status endpoint
+// ============================================================
+
+#[test(tokio::test)]
+async fn test_shelve_status_unknown_cl_returns_false() {
+    let server = TestServer::new();
+    let app = server.app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/repos/depot/main/shelve-status/99999")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .expect("body");
+    let body_str = String::from_utf8(body.to_vec()).expect("utf8");
+    assert!(body_str.contains("\"active\":false"), "Expected active:false, got: {body_str}");
+}
+
+#[test(tokio::test)]
+async fn test_shelve_status_nonexistent_repo_returns_404() {
+    let server = TestServer::new();
+    let app = server.app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/repos/depot/nonexistent/shelve-status/12345")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

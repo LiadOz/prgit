@@ -1,9 +1,9 @@
 mod handlers;
 mod mirror_task;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::routing::get;
 use axum::Router;
@@ -12,6 +12,25 @@ use serde::Deserialize;
 
 use crate::cabinet::Database;
 use crate::mirror::IntegrateStrategy;
+
+#[derive(Clone, Default)]
+pub(crate) struct ActiveShelves {
+    inner: Arc<Mutex<HashSet<usize>>>,
+}
+
+impl ActiveShelves {
+    pub fn insert(&self, cl: usize) {
+        self.inner.lock().unwrap().insert(cl);
+    }
+
+    pub fn remove(&self, cl: usize) {
+        self.inner.lock().unwrap().remove(&cl);
+    }
+
+    pub fn contains(&self, cl: usize) -> bool {
+        self.inner.lock().unwrap().contains(&cl)
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum WindowError {
@@ -100,6 +119,7 @@ pub(crate) struct AppState {
     pub repos: HashMap<String, RepoEntry>,
     pub db_path: String,
     pub git_http_backend: PathBuf,
+    pub active_shelves: ActiveShelves,
 }
 
 fn to_str(path: &std::path::Path) -> Result<&str> {
@@ -210,10 +230,12 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
         repos,
         db_path: db_path_str.to_string(),
         git_http_backend,
+        active_shelves: ActiveShelves::default(),
     });
 
     Ok(Router::new()
         .route("/api/health", get(handlers::health))
+        .route("/api/repos/{group}/{name}/shelve-status/{cl}", get(handlers::shelve_status))
         .fallback(handlers::handle_git_request)
         .with_state(state))
 }
@@ -302,5 +324,26 @@ repos:
 "#;
         let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(!config.repos[0].shelve_async());
+    }
+
+    #[test]
+    fn test_active_shelves_insert_remove_contains() {
+        let tracker = ActiveShelves::default();
+        assert!(!tracker.contains(100));
+
+        tracker.insert(100);
+        assert!(tracker.contains(100));
+        assert!(!tracker.contains(200));
+
+        tracker.insert(200);
+        assert!(tracker.contains(100));
+        assert!(tracker.contains(200));
+
+        tracker.remove(100);
+        assert!(!tracker.contains(100));
+        assert!(tracker.contains(200));
+
+        tracker.remove(200);
+        assert!(!tracker.contains(200));
     }
 }

@@ -23,6 +23,10 @@ pub struct PendingShelve {
 }
 
 impl PendingShelve {
+    pub fn changelist(&self) -> usize {
+        self.changelist
+    }
+
     pub fn complete(self) -> Result<(), ShelverError> {
         let file_changes: Vec<FileChange> = self.changes
             .iter()

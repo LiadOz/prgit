@@ -3,19 +3,44 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Request, State};
+use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use base64::prelude::*;
 use p4rs::P4;
+use serde::Serialize;
 
 use crate::cabinet::Database;
 use crate::shelf::{PendingShelve, Shelver};
 
-use super::{AppState, RepoEntry};
+use super::{ActiveShelves, AppState, RepoEntry};
 
 pub async fn health() -> StatusCode {
     StatusCode::OK
+}
+
+#[derive(Serialize)]
+pub struct ShelveStatusResponse {
+    active: bool,
+}
+
+pub async fn shelve_status(
+    State(state): State<Arc<AppState>>,
+    Path((group, name, cl_str)): Path<(String, String, String)>,
+) -> Response {
+    let cl: usize = match cl_str.parse() {
+        Ok(n) => n,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+
+    let repo_key = format!("{group}/{name}");
+    if !state.repos.contains_key(&repo_key) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let active = state.active_shelves.contains(cl);
+    Json(ShelveStatusResponse { active }).into_response()
 }
 
 pub async fn handle_git_request(
@@ -341,8 +366,12 @@ async fn shelve_branches(
         match result {
             Ok((handler_result, pending)) => {
                 if !pending.is_empty() {
+                    let active = state.active_shelves.clone();
+                    for (_, cl, _) in &handler_result.shelved {
+                        active.insert(*cl);
+                    }
                     let _ = tokio::task::spawn_blocking(move || {
-                        complete_pending_shelves(pending);
+                        complete_pending_shelves(pending, &active);
                     });
                 }
                 handler_result
@@ -448,9 +477,12 @@ fn do_prepare_shelve(
     (HandlerShelveResult { shelved, errors }, pending)
 }
 
-fn complete_pending_shelves(pending: Vec<(String, PendingShelve)>) {
+fn complete_pending_shelves(pending: Vec<(String, PendingShelve)>, active: &ActiveShelves) {
     for (branch, pend) in pending {
-        if let Err(e) = pend.complete() {
+        let cl = pend.changelist();
+        let result = pend.complete();
+        active.remove(cl);
+        if let Err(e) = result {
             log::error!("Background shelve for branch '{branch}' failed: {e}");
         }
     }
