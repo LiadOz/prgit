@@ -482,8 +482,9 @@ fn complete_pending_shelves(pending: Vec<(String, PendingShelve)>, active: &Acti
         let cl = pend.changelist();
         let result = pend.complete();
         active.remove(cl);
-        if let Err(e) = result {
-            log::error!("Background shelve for branch '{branch}' failed: {e}");
+        match result {
+            Ok(()) => log::info!("Background shelve for branch '{branch}' completed (CL {cl})"),
+            Err(e) => log::error!("Background shelve for branch '{branch}' failed: {e}"),
         }
     }
 }
