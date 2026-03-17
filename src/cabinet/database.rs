@@ -37,7 +37,17 @@ impl Database {
                 prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
                 branch TEXT NOT NULL,
                 shelved_change INTEGER NOT NULL,
+                shelver_user TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (prgit_client_id, branch)
+            );"
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS shelve_cl_alias (
+                prgit_client_id INTEGER NOT NULL REFERENCES prgit_clients(id),
+                alias_cl INTEGER NOT NULL,
+                shelved_change INTEGER NOT NULL,
+                PRIMARY KEY (prgit_client_id, alias_cl),
+                UNIQUE (prgit_client_id, shelved_change)
             );"
         )?;
         conn.execute_batch(TicketMetadata::SCHEMA)?;

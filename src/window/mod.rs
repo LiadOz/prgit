@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use git2::Repository;
 use serde::Deserialize;
@@ -236,6 +236,7 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
     Ok(Router::new()
         .route("/api/health", get(handlers::health))
         .route("/api/repos/{group}/{name}/shelve-status/{cl}", get(handlers::shelve_status))
+        .route("/api/repos/{group}/{name}/cl-alias", post(handlers::create_cl_alias))
         .fallback(handlers::handle_git_request)
         .with_state(state))
 }

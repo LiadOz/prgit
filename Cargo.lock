@@ -1638,6 +1638,7 @@ dependencies = [
  "p4rs",
  "rusqlite",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "test-log",

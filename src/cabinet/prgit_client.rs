@@ -105,10 +105,25 @@ impl<'a> PrgitClient<'a> {
     }
 
     pub fn get_branch_for_change(&self, change: usize) -> Option<String> {
-        self.conn
+        // Direct lookup in branch_shelve_mapping
+        let direct = self.conn
             .query_row(
                 "SELECT branch FROM branch_shelve_mapping WHERE prgit_client_id = ?1 AND shelved_change = ?2",
                 rusqlite::params![self.client_id, change as i64],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+
+        if let Some(branch) = direct {
+            return Some(format!("refs/heads/{}", branch));
+        }
+
+        // Fallback: check if this CL is an alias for a shelved CL
+        let shelved = self.get_shelved_change_for_alias(change)?;
+        self.conn
+            .query_row(
+                "SELECT branch FROM branch_shelve_mapping WHERE prgit_client_id = ?1 AND shelved_change = ?2",
+                rusqlite::params![self.client_id, shelved as i64],
                 |row| row.get::<_, String>(0),
             )
             .ok()
@@ -141,11 +156,40 @@ impl<'a> PrgitClient<'a> {
             .ok()
     }
 
-    pub fn set_shelved_change_for_branch(&self, branch: &str, change: usize) {
+    pub fn set_shelved_change_for_branch(&self, branch: &str, change: usize, shelver_user: &str) {
         let _ = self.conn.execute(
-            "INSERT OR REPLACE INTO branch_shelve_mapping (prgit_client_id, branch, shelved_change) VALUES (?1, ?2, ?3)",
-            rusqlite::params![self.client_id, branch, change as i64],
+            "INSERT OR REPLACE INTO branch_shelve_mapping (prgit_client_id, branch, shelved_change, shelver_user) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![self.client_id, branch, change as i64, shelver_user],
         );
+    }
+
+    pub fn get_shelver_for_change(&self, change: usize) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT shelver_user FROM branch_shelve_mapping WHERE prgit_client_id = ?1 AND shelved_change = ?2",
+                rusqlite::params![self.client_id, change as i64],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn set_cl_alias(&self, alias_cl: usize, shelved_change: usize) {
+        let _ = self.conn.execute(
+            "INSERT OR REPLACE INTO shelve_cl_alias (prgit_client_id, alias_cl, shelved_change) VALUES (?1, ?2, ?3)",
+            rusqlite::params![self.client_id, alias_cl as i64, shelved_change as i64],
+        );
+    }
+
+    pub fn get_shelved_change_for_alias(&self, alias_cl: usize) -> Option<usize> {
+        self.conn
+            .query_row(
+                "SELECT shelved_change FROM shelve_cl_alias WHERE prgit_client_id = ?1 AND alias_cl = ?2",
+                rusqlite::params![self.client_id, alias_cl as i64],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|v| v as usize)
+            .ok()
     }
 
     pub fn clear_shelved_change_for_branch(&self, branch: &str) {
@@ -328,7 +372,7 @@ mod tests {
     fn set_and_get_shelved_change_for_branch() {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
-        client.set_shelved_change_for_branch("feature/test", 12345);
+        client.set_shelved_change_for_branch("feature/test", 12345, "jdoe");
         assert_eq!(client.get_shelved_change_for_branch("feature/test"), Some(12345));
     }
 
@@ -336,8 +380,8 @@ mod tests {
     fn set_shelved_change_overwrites_existing() {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
-        client.set_shelved_change_for_branch("feature/test", 100);
-        client.set_shelved_change_for_branch("feature/test", 200);
+        client.set_shelved_change_for_branch("feature/test", 100, "jdoe");
+        client.set_shelved_change_for_branch("feature/test", 200, "jdoe");
         assert_eq!(client.get_shelved_change_for_branch("feature/test"), Some(200));
     }
 
@@ -345,8 +389,72 @@ mod tests {
     fn clear_shelved_change_for_branch() {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
-        client.set_shelved_change_for_branch("feature/test", 12345);
+        client.set_shelved_change_for_branch("feature/test", 12345, "jdoe");
         client.clear_shelved_change_for_branch("feature/test");
         assert!(client.get_shelved_change_for_branch("feature/test").is_none());
+    }
+
+    #[test]
+    fn get_shelver_for_change() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        client.set_shelved_change_for_branch("feature/test", 100, "jdoe");
+        assert_eq!(client.get_shelver_for_change(100), Some("jdoe".to_string()));
+    }
+
+    #[test]
+    fn get_shelver_for_change_returns_none_when_empty() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert!(client.get_shelver_for_change(999).is_none());
+    }
+
+    #[test]
+    fn set_and_get_cl_alias() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        client.set_cl_alias(200, 100);
+        assert_eq!(client.get_shelved_change_for_alias(200), Some(100));
+    }
+
+    #[test]
+    fn cl_alias_replaces_existing_for_same_shelved_cl() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        client.set_cl_alias(200, 100);
+        client.set_cl_alias(300, 100);
+        // Old alias should be gone, new alias works
+        assert_eq!(client.get_shelved_change_for_alias(300), Some(100));
+        assert!(client.get_shelved_change_for_alias(200).is_none());
+    }
+
+    #[test]
+    fn cl_alias_replaces_existing_for_same_alias_cl() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        client.set_cl_alias(200, 100);
+        client.set_cl_alias(200, 150);
+        assert_eq!(client.get_shelved_change_for_alias(200), Some(150));
+    }
+
+    #[test]
+    fn get_branch_for_change_via_alias() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        // Set up branch → shelved CL mapping
+        client.set_shelved_change_for_branch("feature-x", 100, "jdoe");
+        // Set up alias: CL 200 is alias for shelved CL 100
+        client.set_cl_alias(200, 100);
+        // Direct lookup for CL 100
+        assert_eq!(client.get_branch_for_change(100), Some("refs/heads/feature-x".to_string()));
+        // Alias lookup for CL 200
+        assert_eq!(client.get_branch_for_change(200), Some("refs/heads/feature-x".to_string()));
+    }
+
+    #[test]
+    fn get_branch_for_change_no_alias_no_direct() {
+        let (db, client_id) = setup_prgit_client();
+        let client = db.client(client_id).unwrap().unwrap();
+        assert!(client.get_branch_for_change(999).is_none());
     }
 }

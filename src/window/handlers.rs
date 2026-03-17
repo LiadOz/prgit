@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use base64::prelude::*;
 use p4rs::P4;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cabinet::Database;
 use crate::shelf::{PendingShelve, Shelver};
@@ -43,6 +43,97 @@ pub async fn shelve_status(
     Json(ShelveStatusResponse { active }).into_response()
 }
 
+#[derive(Deserialize)]
+pub struct ClAliasRequest {
+    shelved_cl: usize,
+    alias_cl: usize,
+}
+
+#[derive(Serialize)]
+pub struct ClAliasResponse {
+    shelved_cl: usize,
+    alias_cl: usize,
+}
+
+pub async fn create_cl_alias(
+    State(state): State<Arc<AppState>>,
+    Path((group, name)): Path<(String, String)>,
+    req: Request<Body>,
+) -> Response {
+    let repo_key = format!("{group}/{name}");
+    let repo_entry = match state.repos.get(&repo_key) {
+        Some(entry) => entry,
+        None => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let auth_user = match authenticate_push(req.headers(), &repo_entry.config.p4port).await {
+        Ok(au) => au,
+        Err(resp) => return resp,
+    };
+
+    let body_bytes = match axum::body::to_bytes(req.into_body(), 1024).await {
+        Ok(b) => b,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+
+    let alias_req: ClAliasRequest = match serde_json::from_slice(&body_bytes) {
+        Ok(r) => r,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+
+    let db_path = state.db_path.clone();
+    let client_id = repo_entry.client_id;
+    let username = auth_user.username;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let db = Database::open(&db_path).map_err(|e| format!("Database error: {e}"))?;
+        let client = db
+            .client(client_id)
+            .map_err(|e| format!("Database error: {e}"))?
+            .ok_or_else(|| format!("Client id={client_id} not found"))?;
+
+        let shelver = client
+            .get_shelver_for_change(alias_req.shelved_cl)
+            .ok_or_else(|| format!("Shelved CL {} not found", alias_req.shelved_cl))?;
+
+        if shelver != username {
+            return Err(format!(
+                "Only the shelver ({shelver}) can create aliases for CL {}",
+                alias_req.shelved_cl
+            ));
+        }
+
+        client.set_cl_alias(alias_req.alias_cl, alias_req.shelved_cl);
+        Ok(alias_req)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(req)) => (
+            StatusCode::CREATED,
+            Json(ClAliasResponse {
+                shelved_cl: req.shelved_cl,
+                alias_cl: req.alias_cl,
+            }),
+        )
+            .into_response(),
+        Ok(Err(err)) => {
+            if err.contains("not found") {
+                (StatusCode::NOT_FOUND, err).into_response()
+            } else if err.contains("Only the shelver") {
+                (StatusCode::FORBIDDEN, err).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, err).into_response()
+            }
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task panicked: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 pub async fn handle_git_request(
     State(state): State<Arc<AppState>>,
     req: Request<Body>,
@@ -72,9 +163,9 @@ pub async fn handle_git_request(
         .unwrap_or("")
         .to_string();
 
-    let user_p4 = if is_receive_pack {
+    let auth_user = if is_receive_pack {
         match authenticate_push(req.headers(), &repo_entry.config.p4port).await {
-            Ok(p4) => Some(p4),
+            Ok(au) => Some(au),
             Err(resp) => return resp,
         }
     } else {
@@ -130,8 +221,8 @@ pub async fn handle_git_request(
     let (cgi_status, cgi_headers, cgi_body) = parse_cgi_output(&cgi_output);
 
     if is_receive_pack && cgi_status.is_success() {
-        if let Some(user_p4) = user_p4 {
-            let result = shelve_branches(&state, repo_entry, &ref_updates, user_p4).await;
+        if let Some(auth_user) = auth_user {
+            let result = shelve_branches(&state, repo_entry, &ref_updates, auth_user).await;
             if !result.errors.is_empty() {
                 let msg = format!("Push succeeded but shelving failed:\n{}", result.errors.join("\n"));
                 log::error!("{msg}");
@@ -185,7 +276,12 @@ fn unauthorized() -> Response {
         .into_response()
 }
 
-async fn authenticate_push(headers: &HeaderMap, p4port: &str) -> std::result::Result<P4, Response> {
+pub(super) struct AuthenticatedUser {
+    pub p4: P4,
+    pub username: String,
+}
+
+async fn authenticate_push(headers: &HeaderMap, p4port: &str) -> std::result::Result<AuthenticatedUser, Response> {
     let (user, ticket) = extract_basic_auth(headers).ok_or_else(unauthorized)?;
     let port = p4port.to_string();
     let u = user.clone();
@@ -201,7 +297,10 @@ async fn authenticate_push(headers: &HeaderMap, p4port: &str) -> std::result::Re
         )
             .into_response());
     }
-    Ok(P4::new().port(p4port).p4_user(&user).password(&ticket))
+    Ok(AuthenticatedUser {
+        p4: P4::new().port(p4port).p4_user(&user).password(&ticket),
+        username: user,
+    })
 }
 
 fn parse_ref_updates(mut body: &[u8]) -> Vec<(String, String, String)> {
@@ -339,7 +438,7 @@ async fn shelve_branches(
     state: &Arc<AppState>,
     repo_entry: &RepoEntry,
     ref_updates: &[(String, String, String)],
-    user_p4: P4,
+    auth_user: AuthenticatedUser,
 ) -> HandlerShelveResult {
     let zero_sha = "0000000000000000000000000000000000000000";
     let synced_ref = format!("refs/heads/{}", repo_entry.config.synced_branch);
@@ -356,10 +455,13 @@ async fn shelve_branches(
     let db_path = state.db_path.clone();
     let client_id = repo_entry.client_id;
     let async_shelve = repo_entry.config.shelve_async();
+    let username = auth_user.username;
+    let user_p4 = auth_user.p4;
 
     if async_shelve {
+        let u = username.clone();
         let result = tokio::task::spawn_blocking(move || {
-            do_prepare_shelve(&db_path, client_id, &branches, &user_p4)
+            do_prepare_shelve(&db_path, client_id, &branches, &user_p4, &u)
         })
         .await;
 
@@ -383,7 +485,7 @@ async fn shelve_branches(
         }
     } else {
         let result = tokio::task::spawn_blocking(move || {
-            do_shelve(&db_path, client_id, &branches, &user_p4)
+            do_shelve(&db_path, client_id, &branches, &user_p4, &username)
         })
         .await;
 
@@ -402,6 +504,7 @@ fn do_shelve(
     client_id: u64,
     branches: &[String],
     user_p4: &P4,
+    shelver_user: &str,
 ) -> HandlerShelveResult {
     let mut shelved = Vec::new();
     let mut errors = Vec::new();
@@ -421,7 +524,7 @@ fn do_shelve(
     };
 
     for branch in branches {
-        match shelver.shelve(branch, user_p4) {
+        match shelver.shelve(branch, user_p4, shelver_user) {
             Ok(result) => {
                 log::info!("Shelved branch '{branch}' as CL {} on client '{}'", result.changelist, result.client_name);
                 shelved.push((branch.clone(), result.changelist, result.client_name));
@@ -441,6 +544,7 @@ fn do_prepare_shelve(
     client_id: u64,
     branches: &[String],
     user_p4: &P4,
+    shelver_user: &str,
 ) -> (HandlerShelveResult, Vec<(String, PendingShelve)>) {
     let mut shelved = Vec::new();
     let mut pending = Vec::new();
@@ -461,7 +565,7 @@ fn do_prepare_shelve(
     };
 
     for branch in branches {
-        match shelver.prepare_shelve(branch, user_p4) {
+        match shelver.prepare_shelve(branch, user_p4, shelver_user) {
             Ok((result, pend)) => {
                 log::info!("Prepared shelve for branch '{branch}' as CL {} (async)", result.changelist);
                 shelved.push((branch.clone(), result.changelist, result.client_name));

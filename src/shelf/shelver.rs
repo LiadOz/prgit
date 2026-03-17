@@ -53,7 +53,7 @@ impl<'a> Shelver<'a> {
         Ok(Self { prgit_client, repo })
     }
 
-    pub fn shelve(&self, branch: &str, user_p4: &P4) -> Result<ShelveResult, ShelverError> {
+    pub fn shelve(&self, branch: &str, user_p4: &P4, shelver_user: &str) -> Result<ShelveResult, ShelverError> {
         let branch_ref = self.repo.find_branch(branch, git2::BranchType::Local)?;
         let target_commit = branch_ref.get().peel_to_commit()?;
         let target_oid = target_commit.id();
@@ -74,12 +74,12 @@ impl<'a> Shelver<'a> {
         let client_name = handle.shelve_client.client_name().to_string();
         let shelve_cl = self.execute_shelve(&handle.shelve_client, base_change, &target_commit, &changes, &description, existing_shelve)?;
 
-        self.prgit_client.set_shelved_change_for_branch(branch, shelve_cl);
+        self.prgit_client.set_shelved_change_for_branch(branch, shelve_cl, shelver_user);
 
         Ok(ShelveResult { changelist: shelve_cl, client_name })
     }
 
-    pub fn prepare_shelve(&self, branch: &str, user_p4: &P4) -> Result<(ShelveResult, PendingShelve), ShelverError> {
+    pub fn prepare_shelve(&self, branch: &str, user_p4: &P4, shelver_user: &str) -> Result<(ShelveResult, PendingShelve), ShelverError> {
         let branch_ref = self.repo.find_branch(branch, git2::BranchType::Local)?;
         let target_commit = branch_ref.get().peel_to_commit()?;
         let target_oid = target_commit.id();
@@ -102,7 +102,7 @@ impl<'a> Shelver<'a> {
         let changelist = handle.shelve_client.create_or_reuse_changelist(&description, existing_shelve)?;
         let work_dir = self.extract_files_to_temp(&target_commit, &changes)?;
 
-        self.prgit_client.set_shelved_change_for_branch(branch, changelist);
+        self.prgit_client.set_shelved_change_for_branch(branch, changelist, shelver_user);
 
         let result = ShelveResult { changelist, client_name };
         let pending = PendingShelve {
@@ -373,7 +373,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
         assert_eq!(described.description.trim(), "Add new file");
@@ -405,7 +405,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).run().unwrap().single().unwrap();
         assert_eq!(described.description.trim(), "Edit file");
@@ -437,7 +437,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         assert_eq!(prgit_client.get_shelved_change_for_branch("feature"), Some(shelve_cl));
     }
@@ -461,7 +461,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4);
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser");
 
         assert!(matches!(result, Err(ShelverError::NoChanges)));
     }
@@ -490,7 +490,7 @@ mod tests {
         let prgit_client = setup_prgit_client(&env);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4);
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser");
 
         assert!(matches!(result, Err(ShelverError::NoBaseCommit)));
     }
@@ -521,7 +521,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let first_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let first_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         let feature_oid2 = create_feature_commit(
             &env.git_repo,
@@ -531,7 +531,7 @@ mod tests {
         );
         env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid2).unwrap(), true).unwrap();
 
-        let second_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let second_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         assert_eq!(first_cl, second_cl);
     }
@@ -572,7 +572,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4).unwrap().changelist;
+        let shelve_cl = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap().changelist;
 
         let described = env.p4_client.p4.describe(&[shelve_cl]).shelved().run().unwrap().single().unwrap();
         let files: Vec<&str> = described.files.iter()
@@ -609,7 +609,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let (result, _pending) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        let (result, _pending) = shelver.prepare_shelve("feature", &env.p4_client.p4, "testuser").unwrap();
 
         // CL should exist as a pending changelist
         assert!(result.changelist > 0);
@@ -645,7 +645,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let (result, pending) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        let (result, pending) = shelver.prepare_shelve("feature", &env.p4_client.p4, "testuser").unwrap();
 
         // Complete the shelve
         pending.complete().unwrap();
@@ -683,7 +683,7 @@ mod tests {
         let shelver = Shelver::new(&prgit_client).unwrap();
 
         // First prepare + complete
-        let (result1, pending1) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        let (result1, pending1) = shelver.prepare_shelve("feature", &env.p4_client.p4, "testuser").unwrap();
         pending1.complete().unwrap();
 
         // Second prepare should reuse the same CL
@@ -695,7 +695,7 @@ mod tests {
         );
         env.git_repo.branch("feature", &env.git_repo.find_commit(feature_oid2).unwrap(), true).unwrap();
 
-        let (result2, pending2) = shelver.prepare_shelve("feature", &env.p4_client.p4).unwrap();
+        let (result2, pending2) = shelver.prepare_shelve("feature", &env.p4_client.p4, "testuser").unwrap();
         pending2.complete().unwrap();
 
         assert_eq!(result1.changelist, result2.changelist);
