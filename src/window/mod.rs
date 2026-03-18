@@ -1,34 +1,51 @@
 mod handlers;
 mod mirror_task;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::routing::{get, post};
 use axum::Router;
 use git2::Repository;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cabinet::Database;
 use crate::mirror::IntegrateStrategy;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub(crate) enum ShelveState {
+    Queued,
+    Shelving,
+    Done { changelist: usize, client: String },
+    Failed { error: String },
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct ActiveShelves {
-    inner: Arc<Mutex<HashSet<usize>>>,
+    inner: Arc<Mutex<HashMap<String, ShelveState>>>,
 }
 
 impl ActiveShelves {
-    pub fn insert(&self, cl: usize) {
-        self.inner.lock().unwrap().insert(cl);
+    pub fn set_queued(&self, key: &str) {
+        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Queued);
     }
 
-    pub fn remove(&self, cl: usize) {
-        self.inner.lock().unwrap().remove(&cl);
+    pub fn set_shelving(&self, key: &str) {
+        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Shelving);
     }
 
-    pub fn contains(&self, cl: usize) -> bool {
-        self.inner.lock().unwrap().contains(&cl)
+    pub fn set_done(&self, key: &str, changelist: usize, client: String) {
+        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Done { changelist, client });
+    }
+
+    pub fn set_failed(&self, key: &str, error: String) {
+        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Failed { error });
+    }
+
+    pub fn get(&self, key: &str) -> Option<ShelveState> {
+        self.inner.lock().unwrap().get(key).cloned()
     }
 }
 
@@ -234,9 +251,9 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
     });
 
     Ok(Router::new()
-        .route("/api/health", get(handlers::health))
-        .route("/api/repos/{group}/{name}/shelve-status/{cl}", get(handlers::shelve_status))
-        .route("/api/repos/{group}/{name}/cl-alias", post(handlers::create_cl_alias))
+        .route("/api/v1/health", get(handlers::health))
+        .route("/api/v1/repos/{group}/{name}/shelve/status/{branch}", get(handlers::shelve_status))
+        .route("/api/v1/repos/{group}/{name}/shelve/cl-alias", post(handlers::create_cl_alias))
         .fallback(handlers::handle_git_request)
         .with_state(state))
 }
@@ -328,23 +345,33 @@ repos:
     }
 
     #[test]
-    fn test_active_shelves_insert_remove_contains() {
+    fn test_active_shelves_state_transitions() {
         let tracker = ActiveShelves::default();
-        assert!(!tracker.contains(100));
+        assert!(tracker.get("depot/main/feature").is_none());
 
-        tracker.insert(100);
-        assert!(tracker.contains(100));
-        assert!(!tracker.contains(200));
+        // queued → shelving → done
+        tracker.set_queued("depot/main/feature");
+        assert!(matches!(tracker.get("depot/main/feature"), Some(ShelveState::Queued)));
 
-        tracker.insert(200);
-        assert!(tracker.contains(100));
-        assert!(tracker.contains(200));
+        tracker.set_shelving("depot/main/feature");
+        assert!(matches!(tracker.get("depot/main/feature"), Some(ShelveState::Shelving)));
 
-        tracker.remove(100);
-        assert!(!tracker.contains(100));
-        assert!(tracker.contains(200));
+        tracker.set_done("depot/main/feature", 12345, "client-1".to_string());
+        match tracker.get("depot/main/feature") {
+            Some(ShelveState::Done { changelist, client }) => {
+                assert_eq!(changelist, 12345);
+                assert_eq!(client, "client-1");
+            }
+            other => panic!("Expected Done, got {other:?}"),
+        }
 
-        tracker.remove(200);
-        assert!(!tracker.contains(200));
+        // queued → shelving → failed
+        tracker.set_queued("depot/main/bugfix");
+        tracker.set_shelving("depot/main/bugfix");
+        tracker.set_failed("depot/main/bugfix", "P4 error".to_string());
+        match tracker.get("depot/main/bugfix") {
+            Some(ShelveState::Failed { error }) => assert_eq!(error, "P4 error"),
+            other => panic!("Expected Failed, got {other:?}"),
+        }
     }
 }

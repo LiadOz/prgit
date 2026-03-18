@@ -1,9 +1,4 @@
-# shelve-status Specification
-
-## Purpose
-Branch-based shelve status tracking and query endpoint, allowing clients to check the progress and result of background shelve operations.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Shelve status endpoint returns active state
 The server SHALL expose `GET /api/v1/repos/{group}/{name}/shelve/status/{branch}` that returns the shelve state for the given branch. The response SHALL include a `state` field (one of `queued`, `shelving`, `done`, `failed`) and, when available, a `changelist` field with the CL number and a `client` field with the client name.
@@ -54,3 +49,13 @@ The server SHALL maintain an in-memory map of branch names to shelve states. Eac
 #### Scenario: Tracker survives concurrent access
 - **WHEN** multiple pushes register/update branches concurrently while status queries are in flight
 - **THEN** the tracker SHALL handle all operations without data races or panics
+
+## REMOVED Requirements
+
+### Requirement: Shelve status endpoint returns active state
+**Reason**: Replaced by the modified version above. The endpoint path changes from `/api/repos/{group}/{name}/shelve-status/{cl}` to `/api/v1/repos/{group}/{name}/shelve/status/{branch}`, and the response changes from a simple `{ "active": bool }` to a richer state object.
+**Migration**: Consumers must update to the new `/api/v1/` path, use branch name instead of CL number, and handle the new response shape.
+
+### Requirement: Active shelves tracker
+**Reason**: Replaced by the modified version above. The tracker is rekeyed from CL numbers (`HashSet<usize>`) to branch names with richer state.
+**Migration**: Internal change only — no external migration needed.

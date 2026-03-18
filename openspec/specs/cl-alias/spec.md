@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Create CL alias via POST endpoint
-The window server SHALL expose a POST endpoint at `/api/repos/{group}/{name}/cl-alias` that accepts a JSON body with `shelved_cl` (the original shelved CL) and `alias_cl` (the new CL the user submitted instead). On success, the server SHALL return 201 with the created alias as JSON.
+The window server SHALL expose a POST endpoint at `/api/v1/repos/{group}/{name}/shelve/cl-alias` that accepts a JSON body with `shelved_cl` (the original shelved CL) and `alias_cl` (the new CL the user submitted instead). On success, the server SHALL return 201 with the created alias as JSON.
 
 #### Scenario: Successful alias creation
-- **WHEN** an authenticated user POSTs `{"shelved_cl": 100, "alias_cl": 200}` to `/api/repos/depot/main/cl-alias`
+- **WHEN** an authenticated user POSTs `{"shelved_cl": 100, "alias_cl": 200}` to `/api/v1/repos/depot/main/shelve/cl-alias`
 - **THEN** the server SHALL store the alias mapping and return HTTP 201 with `{"shelved_cl": 100, "alias_cl": 200}`
 
 #### Scenario: Repo not found
-- **WHEN** a user POSTs to `/api/repos/unknown/repo/cl-alias`
+- **WHEN** a user POSTs to `/api/v1/repos/unknown/repo/shelve/cl-alias`
 - **THEN** the server SHALL return HTTP 404
 
 #### Scenario: Invalid JSON body

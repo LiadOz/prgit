@@ -1,39 +1,28 @@
 # async-shelve Specification
 
 ## Purpose
-Background shelving mode that splits shelve operations into a fast prepare phase (changelist creation) and a deferred completion phase (actual P4 shelve), enabling non-blocking git push responses on slow P4 servers.
+Background shelving mode that runs the entire shelve operation in a background task, enabling non-blocking git push responses on slow P4 servers.
 
 ## Requirements
 
-### Requirement: Two-phase shelve operation
-The shelver SHALL support splitting a shelve into a prepare phase and a completion phase. The prepare phase creates the P4 changelist and returns immediately. The completion phase performs the actual P4 shelve operation.
+### Requirement: Background shelve operation
+The shelver SHALL support an async mode where the entire shelve operation runs in the background. When async shelving is enabled, the push handler SHALL register the branch in the active shelves tracker and spawn a background task that calls `shelve()` directly.
 
-#### Scenario: Prepare creates changelist without shelving
-- **WHEN** `prepare_shelve` is called for a branch with changes
-- **THEN** the system SHALL create a pending P4 changelist, store the branch-to-changelist mapping, and return the changelist number without executing the P4 shelve command
+#### Scenario: Async shelve runs entirely in background
+- **WHEN** a push is received for branch `feature-xyz` and async shelving is enabled
+- **THEN** the system SHALL register the branch as queued in the active shelves tracker and spawn a background task that calls `shelve("feature-xyz", user_p4, shelver_user)` — no P4 interaction occurs before the push response is sent
 
-#### Scenario: Completion executes the shelve
-- **WHEN** `PendingShelve::complete()` is called with a previously prepared shelve
-- **THEN** the system SHALL sync base files, apply changes, execute `p4 shelve`, and clean up the workspace
+#### Scenario: Background task updates tracker on completion
+- **WHEN** the background shelve task completes successfully for branch `feature-xyz`
+- **THEN** the system SHALL update the tracker entry to done state with the resulting CL number and client name
 
-#### Scenario: Prepare reuses existing changelist
-- **WHEN** `prepare_shelve` is called for a branch that already has a shelved changelist
-- **THEN** the system SHALL reuse the existing changelist number rather than creating a new one
-
-### Requirement: PendingShelve holds lock until completion
-The `PendingShelve` struct SHALL hold the shelve client file lock for the entire duration between prepare and complete, preventing concurrent shelve operations on the same client.
-
-#### Scenario: Concurrent push during pending shelve
-- **WHEN** a second push arrives for the same user while a `PendingShelve` is still pending
-- **THEN** the system SHALL return a client-busy error for the second push
-
-#### Scenario: Lock released after completion
-- **WHEN** `PendingShelve::complete()` finishes (success or failure)
-- **THEN** the file lock SHALL be released
+#### Scenario: Background task updates tracker on failure
+- **WHEN** the background shelve task fails for branch `feature-xyz`
+- **THEN** the system SHALL update the tracker entry to failed state with the error message
 
 ### Requirement: Background shelve failure is non-fatal
-When a background shelve completion fails, the failure SHALL be logged but SHALL NOT affect the already-completed git push response.
+When a background shelve fails, the failure SHALL be logged but SHALL NOT affect the already-completed git push response.
 
 #### Scenario: Background shelve fails
-- **WHEN** the background `PendingShelve::complete()` encounters a P4 error
-- **THEN** the server SHALL log the error at error level and the pending changelist SHALL remain in P4 for the next push to retry
+- **WHEN** the background shelve task encounters a P4 error
+- **THEN** the server SHALL log the error at error level and the tracker entry SHALL be set to failed state

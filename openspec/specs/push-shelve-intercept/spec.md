@@ -12,7 +12,7 @@ The server SHALL reject any push that targets the synced branch before proxying 
 - **THEN** the server SHALL allow the push to proceed
 
 ### Requirement: Shelve on branch push
-After a successful push, the server SHALL run the shelver for each pushed branch. When async shelving is enabled for the repo, the server SHALL use the two-phase shelve flow: create the changelist synchronously, then complete the shelve in the background. The server SHALL register each CL in the active shelves tracker before spawning the background task, and deregister it when the background task completes.
+After a successful push, the server SHALL run the shelver for each pushed branch. When async shelving is enabled for the repo, the server SHALL register the branch in the active shelves tracker with state `queued` and return the push response immediately — before any P4 interaction. The shelve SHALL then run entirely in the background using the standard `shelve()` method.
 
 #### Scenario: Feature branch push triggers shelve (sync mode)
 - **WHEN** a user pushes to `refs/heads/feature-xyz` and async shelving is disabled
@@ -20,7 +20,7 @@ After a successful push, the server SHALL run the shelver for each pushed branch
 
 #### Scenario: Feature branch push triggers shelve (async mode)
 - **WHEN** a user pushes to `refs/heads/feature-xyz` and async shelving is enabled
-- **THEN** the server SHALL call `Shelver.prepare_shelve("feature-xyz", user_p4)`, return the changelist number in the git response, register the CL in the active shelves tracker, and complete the shelve in a background task that deregisters the CL on completion
+- **THEN** the server SHALL register `feature-xyz` as `queued` in the active shelves tracker and return the push response immediately, then execute `Shelver.shelve("feature-xyz", user_p4)` in a background task that updates the tracker on completion
 
 #### Scenario: Branch deletion does not trigger shelve
 - **WHEN** a push deletes a branch (new-sha is all zeros)
@@ -34,8 +34,8 @@ The server SHALL inject sideband messages into the git push response indicating 
 - **THEN** the sideband message SHALL read: "Shelved branch '{branch}' as CL {cl} on client '{client}'"
 
 #### Scenario: Async shelve feedback
-- **WHEN** a branch shelve is started asynchronously
-- **THEN** the sideband message SHALL read: "Shelving branch '{branch}' as CL {cl} on client '{client}' (in background)"
+- **WHEN** a branch shelve is queued asynchronously
+- **THEN** the sideband message SHALL read: "Shelving branch '{branch}' in background"
 
 ### Requirement: Shelve uses authenticated P4 identity
 The shelver SHALL create the P4 shelved changelist using the P4 user and ticket extracted from the push request's HTTP basic auth.
