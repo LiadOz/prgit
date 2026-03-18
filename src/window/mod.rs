@@ -251,7 +251,7 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
     });
 
     Ok(Router::new()
-        .route("/api/v1/health", get(handlers::health))
+        .route("/api/health", get(handlers::health))
         .route("/api/v1/repos/{group}/{name}/shelve/status/{branch}", get(handlers::shelve_status))
         .route("/api/v1/repos/{group}/{name}/shelve/cl-alias", post(handlers::create_cl_alias))
         .fallback(handlers::handle_git_request)

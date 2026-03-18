@@ -191,7 +191,7 @@ async fn test_health_endpoint() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/health")
+                .uri("/api/health")
                 .body(Body::empty())
                 .expect("request"),
         )
