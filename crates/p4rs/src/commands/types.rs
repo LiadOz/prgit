@@ -296,15 +296,17 @@ impl std::str::FromStr for FileType {
         let base_str = parts.next().ok_or("empty file type")?;
         let mut ft = FileType::new(base_str.parse()?);
         for modifier in parts {
-            match modifier {
-                "w" => ft.writable = true,
-                "x" => ft.executable = true,
-                "k" => ft.keyword_expansion = true,
-                "l" => ft.exclusive_lock = true,
-                "F" => ft.full_revisions = true,
-                "C" => ft.compressed = true,
-                "D" => ft.rcs_deltas = true,
-                _ => {}
+            for c in modifier.chars() {
+                match c {
+                    'w' => ft.writable = true,
+                    'x' => ft.executable = true,
+                    'k' => ft.keyword_expansion = true,
+                    'l' => ft.exclusive_lock = true,
+                    'F' => ft.full_revisions = true,
+                    'C' => ft.compressed = true,
+                    'D' => ft.rcs_deltas = true,
+                    _ => {}
+                }
             }
         }
         Ok(ft)
@@ -499,6 +501,34 @@ mod tests {
         assert_eq!(
             "symlink+l".parse::<FileType>().unwrap(),
             FileType::symlink().exclusive_lock()
+        );
+    }
+
+    #[test]
+    fn test_file_type_from_str_combined_modifiers() {
+        // P4 outputs combined modifiers like "text+kx" (not "text+k+x")
+        assert_eq!(
+            "text+kx".parse::<FileType>().unwrap(),
+            FileType::text().keyword_expansion().executable()
+        );
+        assert_eq!(
+            "text+wx".parse::<FileType>().unwrap(),
+            FileType::text().writable().executable()
+        );
+        assert_eq!(
+            "text+xlk".parse::<FileType>().unwrap(),
+            FileType::text()
+                .executable()
+                .exclusive_lock()
+                .keyword_expansion()
+        );
+        // Mixed: some combined, some separate
+        assert_eq!(
+            "binary+kx+l".parse::<FileType>().unwrap(),
+            FileType::binary()
+                .keyword_expansion()
+                .executable()
+                .exclusive_lock()
         );
     }
 
