@@ -9,7 +9,11 @@ pub struct P4Message {
 
 impl P4Message {
     pub fn new(severity: u8, generic: u8, data: impl Into<String>) -> Self {
-        Self { severity, generic, data: data.into() }
+        Self {
+            severity,
+            generic,
+            data: data.into(),
+        }
     }
 
     pub fn is_error(&self) -> bool {
@@ -52,18 +56,20 @@ pub enum P4Error {
     UsageError(String),
 }
 
-const PERMISSION_PATTERNS: &[&str] = &[
-    "You don't have permission",
-];
+const PERMISSION_PATTERNS: &[&str] = &["You don't have permission"];
 
 fn is_permission_error(errors: &[P4Message]) -> bool {
-    errors.iter().any(|e| {
-        PERMISSION_PATTERNS.iter().any(|p| e.data.contains(p))
-    })
+    errors
+        .iter()
+        .any(|e| PERMISSION_PATTERNS.iter().any(|p| e.data.contains(p)))
 }
 
 fn format_errors(errors: &[P4Message]) -> String {
-    errors.iter().map(|e| e.data.trim()).collect::<Vec<_>>().join("\n")
+    errors
+        .iter()
+        .map(|e| e.data.trim())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 impl P4Error {
@@ -71,14 +77,20 @@ impl P4Error {
         if is_permission_error(&errors) {
             return Self::PermissionDenied(format_errors(&errors));
         }
-        Self::Command { errors, partial_results: None }
+        Self::Command {
+            errors,
+            partial_results: None,
+        }
     }
 
     pub fn command_with_partial(errors: Vec<P4Message>, partial: serde_json::Value) -> Self {
         if is_permission_error(&errors) {
             return Self::PermissionDenied(format_errors(&errors));
         }
-        Self::Command { errors, partial_results: Some(partial) }
+        Self::Command {
+            errors,
+            partial_results: Some(partial),
+        }
     }
 
     pub fn message(&self) -> String {
@@ -90,9 +102,7 @@ impl P4Error {
 
     pub fn contains(&self, pattern: &str) -> bool {
         match self {
-            P4Error::Command { errors, .. } => {
-                errors.iter().any(|e| e.data.contains(pattern))
-            }
+            P4Error::Command { errors, .. } => errors.iter().any(|e| e.data.contains(pattern)),
             _ => self.to_string().contains(pattern),
         }
     }
@@ -146,7 +156,11 @@ mod tests {
 
     #[test]
     fn test_command_detects_permission_denied() {
-        let err = P4Error::command(vec![P4Message::new(3, 0, "You don't have permission for this operation.")]);
+        let err = P4Error::command(vec![P4Message::new(
+            3,
+            0,
+            "You don't have permission for this operation.",
+        )]);
         assert!(matches!(err, P4Error::PermissionDenied(_)));
 
         let err = P4Error::command(vec![P4Message::new(3, 0, "file not found")]);

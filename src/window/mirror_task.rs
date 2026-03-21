@@ -71,7 +71,7 @@ pub fn spawn_all(config: &ServerConfig, emitter: &EventEmitter) {
                     }
 
                     let last_after = mirror.last_sync_change();
-                    let changes_synced = if last_after > last_before { last_after - last_before } else { 0 };
+                    let changes_synced = last_after.saturating_sub(last_before);
                     Ok(MirrorCycleResult { last_change: last_after, changes_synced, change_infos, merged })
                 })
                 .await;
@@ -79,7 +79,10 @@ pub fn spawn_all(config: &ServerConfig, emitter: &EventEmitter) {
                 let duration_ms = cycle_start.elapsed().as_millis() as u64;
                 match result {
                     Ok(Ok(cycle)) => {
-                        log::debug!("Mirror '{task_client}': synced to change {}", cycle.last_change);
+                        log::debug!(
+                            "Mirror '{task_client}': synced to change {}",
+                            cycle.last_change
+                        );
 
                         // Emit per-change events
                         for info in &cycle.change_infos {

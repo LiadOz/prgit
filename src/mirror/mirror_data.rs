@@ -6,10 +6,8 @@ pub enum IntegrateStrategy {
 }
 
 impl IntegrateStrategy {
-    pub fn from_db(value: i64) -> Self {
-        match value {
-            _ => Self::MergeOurs,
-        }
+    pub fn from_db(_value: i64) -> Self {
+        Self::MergeOurs
     }
 
     pub fn to_db(self) -> i64 {
@@ -80,7 +78,8 @@ impl MirrorData for HashMapMirrorData {
     }
 
     fn set_user_email(&mut self, user: &str, email: &str) {
-        self.user_mapping.insert(user.to_string(), email.to_string());
+        self.user_mapping
+            .insert(user.to_string(), email.to_string());
     }
 
     fn p4_client(&self) -> &str {

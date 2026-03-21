@@ -10,10 +10,22 @@ args = ["clippy", "--all-targets", "--", "-D", "warnings"]
 command = "cargo"
 args = ["test", "--", "--nocapture"]
 
+[tasks.test-local]
+description = "Run all tests using local p4d instead of Docker"
+command = "cargo"
+args = ["test", "--features", "testkit-local", "--", "--nocapture"]
+
 [tasks.cov]
 command = "cargo"
 args = ["llvm-cov"]
 
-[tasks.ci]
-dependencies = ["fmt", "lint", "test", "cov"]
+[tasks.cov-local]
+command = "cargo"
+args = ["llvm-cov", "--features", "testkit-local"]
 
+[tasks.ci]
+dependencies = ["fmt", "lint", "test"]
+
+[tasks.ci-local]
+description = "CI using local p4d instead of Docker"
+dependencies = ["fmt", "lint", "test-local"]

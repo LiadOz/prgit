@@ -34,7 +34,7 @@ impl Table for PrgitClientInfo {
 //     pub depot: String,
 //     pub client: String,
 // }
-// 
+//
 // impl Table for ClientViews {
 //     const SCHEMA: &'static str = "
 //         CREATE TABLE IF NOT EXISTS client_views (
@@ -70,7 +70,6 @@ impl Table for PrgitRepo {
         );
     ";
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ShelveConfig {
@@ -121,4 +120,3 @@ impl Table for TicketMetadata {
         );
     ";
 }
-

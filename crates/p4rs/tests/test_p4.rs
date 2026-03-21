@@ -31,7 +31,13 @@ fn test_unknown_command_returns_command_error() {
 #[test]
 fn test_info() {
     let p4 = SERVER.p4();
-    let info = p4.info().short().run().expect("Failed to get info").single().expect("Expected single result");
+    let info = p4
+        .info()
+        .short()
+        .run()
+        .expect("Failed to get info")
+        .single()
+        .expect("Expected single result");
     assert!(!info.user_name.is_empty());
 }
 
@@ -159,20 +165,33 @@ fn test_add_submit_edit() {
     let file_path = test_client.client_root().join("edit_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Add file for edit test")
+    test_client
+        .changelist("Add file for edit test")
         .add_file("edit_test.txt", b"initial content")
         .submit()
         .unwrap();
 
-    let edit_results = test_client.p4.edit(&[file_str]).run().expect("Failed to edit file");
+    let edit_results = test_client
+        .p4
+        .edit(&[file_str])
+        .run()
+        .expect("Failed to edit file");
     assert_eq!(edit_results.len(), 1);
     assert_eq!(edit_results[0].action, EditAction::Edit);
 
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened files");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].action, OpenAction::Edit);
 
-    test_client.p4.revert(&[file_str]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&[file_str])
+        .run()
+        .expect("Failed to revert");
 }
 
 #[test]
@@ -181,7 +200,8 @@ fn test_edit_with_changelist() {
     let file_path = test_client.client_root().join("cl_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Add file")
+    test_client
+        .changelist("Add file")
         .add_file("cl_test.txt", b"content")
         .submit()
         .unwrap();
@@ -203,11 +223,19 @@ fn test_edit_with_changelist() {
         .expect("Failed to edit with changelist");
     assert_eq!(results.len(), 1);
 
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened files");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened files");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].change.number(), Some(edit_cl));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(edit_cl).run().unwrap();
 }
 
@@ -250,7 +278,11 @@ fn test_change_with_multiple_files() {
     assert_eq!(spec.description.trim(), "Multi-file change");
     assert_eq!(spec.files.len(), 2);
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(cl).run().unwrap();
 }
 
@@ -322,17 +354,30 @@ fn test_opened_have_rev_after_submit() {
     let file_path = test_client.client_root().join("have_rev_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Add")
+    test_client
+        .changelist("Add")
         .add_file("have_rev_test.txt", b"content")
         .submit()
         .unwrap();
 
-    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    test_client
+        .p4
+        .edit(&[file_str])
+        .run()
+        .expect("Failed to edit");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened");
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].have_rev, Some(1));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
 }
 
 #[test]
@@ -341,13 +386,23 @@ fn test_revert_unchanged() {
     let file_path = test_client.client_root().join("unchanged_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Add")
+    test_client
+        .changelist("Add")
         .add_file("unchanged_test.txt", b"content")
         .submit()
         .unwrap();
 
-    test_client.p4.edit(&[file_str]).run().expect("Failed to edit");
-    let reverted = test_client.p4.revert(&["//..."]).unchanged().run().expect("Failed to revert");
+    test_client
+        .p4
+        .edit(&[file_str])
+        .run()
+        .expect("Failed to edit");
+    let reverted = test_client
+        .p4
+        .revert(&["//..."])
+        .unchanged()
+        .run()
+        .expect("Failed to revert");
     assert_eq!(reverted.len(), 1);
 }
 
@@ -364,15 +419,25 @@ fn test_edit_preview() {
     let file_path = test_client.client_root().join("preview_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Add")
+    test_client
+        .changelist("Add")
         .add_file("preview_test.txt", b"content")
         .submit()
         .unwrap();
 
-    let results = test_client.p4.edit(&[file_str]).preview().run().expect("Failed to preview edit");
+    let results = test_client
+        .p4
+        .edit(&[file_str])
+        .preview()
+        .run()
+        .expect("Failed to preview edit");
     assert_eq!(results.len(), 1);
 
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened");
     assert!(opened.is_empty());
 }
 
@@ -448,9 +513,17 @@ fn test_shelve() {
         .delete(cl)
         .run()
         .expect("Failed to delete shelve");
-    assert!(delete_result.single().expect("Expected single result").data.contains("deleted"));
+    assert!(delete_result
+        .single()
+        .expect("Expected single result")
+        .data
+        .contains("deleted"));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(cl).run().unwrap();
 }
 
@@ -519,7 +592,11 @@ fn test_reopen() {
     assert_eq!(reopen_type.len(), 1);
     assert_eq!(reopen_type[0].file_type, Some(p4rs::FileType::binary()));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(cl1).run().unwrap();
     test_client.p4.change().delete(cl2).run().unwrap();
 }
@@ -574,7 +651,13 @@ fn test_symlink() {
         .unwrap();
     assert_eq!(link_opened.file_type.base, p4rs::BaseFileType::Symlink);
 
-    let submit = test_client.p4.submit(cl).run().expect("Failed to submit").single().expect("Expected submit result");
+    let submit = test_client
+        .p4
+        .submit(cl)
+        .run()
+        .expect("Failed to submit")
+        .single()
+        .expect("Expected submit result");
     assert!(submit.submitted_change > 0);
 
     let describe = test_client
@@ -598,7 +681,8 @@ fn test_delete() {
     let file1_str = file1.to_str().unwrap();
     let file2_str = file2.to_str().unwrap();
 
-    test_client.changelist("Delete test")
+    test_client
+        .changelist("Delete test")
         .add_file("delete_test1.txt", b"delete content 1")
         .add_file("delete_test2.txt", b"delete content 2")
         .submit()
@@ -622,17 +706,34 @@ fn test_delete() {
     assert_eq!(delete_result.len(), 2);
     assert!(delete_result.iter().all(|r| r.action == "delete"));
 
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened");
     assert_eq!(opened.len(), 2);
     assert!(opened.iter().all(|f| f.action == OpenAction::Delete));
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(delete_cl).run().unwrap();
 
-    let preview_result = test_client.p4.delete(&[file1_str]).preview().run().expect("Failed to preview delete");
+    let preview_result = test_client
+        .p4
+        .delete(&[file1_str])
+        .preview()
+        .run()
+        .expect("Failed to preview delete");
     assert_eq!(preview_result.len(), 1);
 
-    let opened_after = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened after preview");
+    let opened_after = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened after preview");
     assert!(opened_after.is_empty());
 }
 
@@ -800,7 +901,10 @@ fn test_describe() {
 
     let multi_desc = test_client
         .p4
-        .describe(&[add_submitted.submitted_change, edit_submitted.submitted_change])
+        .describe(&[
+            add_submitted.submitted_change,
+            edit_submitted.submitted_change,
+        ])
         .short()
         .run()
         .expect("Failed to describe multiple");
@@ -812,10 +916,12 @@ fn test_print_content() {
     let test_client = SERVER.test_client();
     let content = "Hello, this is test content for print command.\nLine 2.\nLine 3.";
 
-    let submitted = test_client.changelist("Print test")
+    let submitted = test_client
+        .changelist("Print test")
         .add_file("print_test.txt", content.as_bytes())
         .submit()
-        .unwrap().submitted_change;
+        .unwrap()
+        .submitted_change;
 
     let results = test_client
         .p4
@@ -843,17 +949,22 @@ fn test_print_content() {
 fn test_print_to_file() {
     let test_client = SERVER.test_client();
 
-    let submitted = test_client.changelist("Print to file test")
+    let submitted = test_client
+        .changelist("Print to file test")
         .add_file("print_file1.txt", b"File 1 content")
         .add_file("print_file2.txt", b"File 2 content")
         .submit()
-        .unwrap().submitted_change;
+        .unwrap()
+        .submitted_change;
 
     let output_dir = test_client.client_root().join("print_output");
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
 
     let output_file1 = output_dir.join("out1.txt");
-    let depot_file1 = format!("//depot/{}/print_file1.txt@={}", test_client.client_name, submitted);
+    let depot_file1 = format!(
+        "//depot/{}/print_file1.txt@={}",
+        test_client.client_name, submitted
+    );
     let results = test_client
         .p4
         .print()
@@ -871,10 +982,12 @@ fn test_print_to_file() {
 fn test_print_to_file_unmapped_path() {
     let test_client = SERVER.test_client();
 
-    let submitted = test_client.changelist("Print unmapped test")
+    let submitted = test_client
+        .changelist("Print unmapped test")
         .add_file("print_unmapped.txt", b"Unmapped test")
         .submit()
-        .unwrap().submitted_change;
+        .unwrap()
+        .submitted_change;
 
     let output_pattern = "./nonexistent_output/...";
     let result = test_client
@@ -886,7 +999,11 @@ fn test_print_to_file_unmapped_path() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     let err_str = format!("{:?}", err);
-    assert!(err_str.contains("map"), "Expected mapping error, got: {}", err_str);
+    assert!(
+        err_str.contains("map"),
+        "Expected mapping error, got: {}",
+        err_str
+    );
 }
 
 #[test]
@@ -895,26 +1012,45 @@ fn test_sync() {
     let file_path = test_client.client_root().join("sync_test.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Sync test")
+    test_client
+        .changelist("Sync test")
         .add_file("sync_test.txt", b"sync content")
         .submit()
         .unwrap();
 
-    test_client.p4.sync(&[&format!("{}#none", file_str)]).run().expect("Failed to sync to #none");
+    test_client
+        .p4
+        .sync(&[&format!("{}#none", file_str)])
+        .run()
+        .expect("Failed to sync to #none");
     assert!(!file_path.exists());
 
-    let preview_results = test_client.p4.sync(&[file_str]).preview().run().expect("Failed to sync preview");
+    let preview_results = test_client
+        .p4
+        .sync(&[file_str])
+        .preview()
+        .run()
+        .expect("Failed to sync preview");
     assert_eq!(preview_results.len(), 1);
     assert!(preview_results[0].depot_file.contains("sync_test.txt"));
     assert!(!file_path.exists());
 
-    let results = test_client.p4.sync(&[file_str]).run().expect("Failed to sync");
+    let results = test_client
+        .p4
+        .sync(&[file_str])
+        .run()
+        .expect("Failed to sync");
     assert_eq!(results.len(), 1);
     assert!(results[0].depot_file.contains("sync_test.txt"));
     assert_eq!(results[0].rev, 1);
     assert!(file_path.exists());
 
-    let force_results = test_client.p4.sync(&[file_str]).force().run().expect("Failed to force sync");
+    let force_results = test_client
+        .p4
+        .sync(&[file_str])
+        .force()
+        .run()
+        .expect("Failed to force sync");
     assert_eq!(force_results.len(), 1);
 }
 
@@ -924,12 +1060,14 @@ fn test_sync_metadata_only() {
     let file_path = test_client.client_root().join("sync_metadata.txt");
     let file_str = file_path.to_str().unwrap();
 
-    test_client.changelist("Rev 1")
+    test_client
+        .changelist("Rev 1")
         .add_file("sync_metadata.txt", b"revision 1 content")
         .submit()
         .unwrap();
 
-    test_client.changelist("Rev 2")
+    test_client
+        .changelist("Rev 2")
         .edit_file("sync_metadata.txt", b"revision 2 content")
         .submit()
         .unwrap();
@@ -946,10 +1084,16 @@ fn test_sync_metadata_only() {
     assert_eq!(metadata_results.len(), 1);
     assert_eq!(metadata_results[0].rev, 1);
 
-    let after_metadata = fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
+    let after_metadata =
+        fs::read_to_string(&file_path).expect("Failed to read after metadata sync");
     assert_eq!(after_metadata, "revision 2 content");
 
-    let have = test_client.p4.sync(&[file_str]).preview().run().expect("Failed to check have");
+    let have = test_client
+        .p4
+        .sync(&[file_str])
+        .preview()
+        .run()
+        .expect("Failed to check have");
     assert_eq!(have.len(), 1);
     assert_eq!(have[0].rev, 2);
 }
@@ -958,7 +1102,13 @@ fn test_sync_metadata_only() {
 fn test_user() {
     let test_client = SERVER.test_client();
 
-    let info = test_client.p4.info().run().expect("Failed to get info").single().expect("Expected single result");
+    let info = test_client
+        .p4
+        .info()
+        .run()
+        .expect("Failed to get info")
+        .single()
+        .expect("Expected single result");
     let username = &info.user_name;
 
     let user_info = test_client
@@ -1012,15 +1162,18 @@ fn test_where() {
 fn test_print_deleted_file() {
     let test_client = SERVER.test_client();
 
-    test_client.changelist("Add file")
+    test_client
+        .changelist("Add file")
         .add_file("print_delete_test.txt", b"content to delete")
         .submit()
         .unwrap();
 
-    let delete_submitted = test_client.changelist("Delete file")
+    let delete_submitted = test_client
+        .changelist("Delete file")
         .delete_file("print_delete_test.txt")
         .submit()
-        .unwrap().submitted_change;
+        .unwrap()
+        .submitted_change;
 
     let output_dir = test_client.client_root().join("print_delete_output");
     fs::create_dir_all(&output_dir).expect("Failed to create output dir");
@@ -1043,7 +1196,8 @@ fn test_print_deleted_file() {
 #[test]
 fn test_move_file() {
     let test_client = SERVER.test_client();
-    test_client.changelist("Add file for move test")
+    test_client
+        .changelist("Add file for move test")
         .add_file("move_source.txt", b"original content")
         .submit()
         .unwrap();
@@ -1062,7 +1216,9 @@ fn test_move_file() {
     let source_str = source_path.to_str().unwrap();
     let dest_str = dest_path.to_str().unwrap();
 
-    test_client.p4.edit(&[source_str])
+    test_client
+        .p4
+        .edit(&[source_str])
         .changelist(move_cl)
         .run()
         .expect("Failed to open file for edit");
@@ -1075,7 +1231,9 @@ fn test_move_file() {
         .expect("Failed to move file");
 
     assert_eq!(move_results.len(), 1);
-    let move_add = move_results.iter().find(|r| r.action == FileAction::MoveAdd);
+    let move_add = move_results
+        .iter()
+        .find(|r| r.action == FileAction::MoveAdd);
     assert!(move_add.is_some());
     assert!(move_add.unwrap().depot_file.ends_with("move_dest.txt"));
 
@@ -1086,7 +1244,11 @@ fn test_move_file() {
         .expect("Failed to get opened files");
     assert_eq!(opened.len(), 2);
 
-    test_client.p4.revert(&["//..."]).run().expect("Failed to revert");
+    test_client
+        .p4
+        .revert(&["//..."])
+        .run()
+        .expect("Failed to revert");
     test_client.p4.change().delete(move_cl).run().unwrap();
 }
 
@@ -1094,7 +1256,8 @@ fn test_move_file() {
 fn test_files() {
     let test_client = SERVER.test_client();
 
-    test_client.changelist("Add files for test")
+    test_client
+        .changelist("Add files for test")
         .add_file("test_file1.txt", b"content1")
         .add_file("test_file2.txt", b"content2")
         .submit()
@@ -1107,10 +1270,17 @@ fn test_files() {
         .expect("Failed to get files");
 
     assert!(files.len() >= 2);
-    assert!(files.iter().any(|f| f.depot_file.ends_with("test_file1.txt")));
-    assert!(files.iter().any(|f| f.depot_file.ends_with("test_file2.txt")));
+    assert!(files
+        .iter()
+        .any(|f| f.depot_file.ends_with("test_file1.txt")));
+    assert!(files
+        .iter()
+        .any(|f| f.depot_file.ends_with("test_file2.txt")));
 
-    let file1 = files.iter().find(|f| f.depot_file.ends_with("test_file1.txt")).unwrap();
+    let file1 = files
+        .iter()
+        .find(|f| f.depot_file.ends_with("test_file1.txt"))
+        .unwrap();
     assert_eq!(file1.rev, 1);
     assert_eq!(file1.action, "add");
 }
@@ -1118,7 +1288,8 @@ fn test_files() {
 #[test]
 fn test_changelist_builder_batched_add() {
     let test_client = SERVER.test_client();
-    let result = test_client.changelist("Batched add test")
+    let result = test_client
+        .changelist("Batched add test")
         .add_file("batch_add1.txt", b"content1")
         .add_file("batch_add2.txt", b"content2")
         .add_file("batch_add3.txt", b"content3")
@@ -1127,47 +1298,63 @@ fn test_changelist_builder_batched_add() {
 
     assert!(result.submitted_change > 0);
 
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files.len(), 3);
 }
 
 #[test]
 fn test_changelist_builder_batched_edit() {
     let test_client = SERVER.test_client();
-    test_client.changelist("Setup for edit")
+    test_client
+        .changelist("Setup for edit")
         .add_file("batch_edit1.txt", b"original1")
         .add_file("batch_edit2.txt", b"original2")
         .submit()
         .unwrap();
 
-    let result = test_client.changelist("Batched edit test")
+    let result = test_client
+        .changelist("Batched edit test")
         .edit_file("batch_edit1.txt", b"modified1")
         .edit_file("batch_edit2.txt", b"modified2")
         .submit()
         .unwrap();
 
     assert!(result.submitted_change > 0);
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files.len(), 2);
 }
 
 #[test]
 fn test_changelist_builder_batched_delete() {
     let test_client = SERVER.test_client();
-    test_client.changelist("Setup for delete")
+    test_client
+        .changelist("Setup for delete")
         .add_file("batch_del1.txt", b"content1")
         .add_file("batch_del2.txt", b"content2")
         .submit()
         .unwrap();
 
-    let result = test_client.changelist("Batched delete test")
+    let result = test_client
+        .changelist("Batched delete test")
         .delete_file("batch_del1.txt")
         .delete_file("batch_del2.txt")
         .submit()
         .unwrap();
 
     assert!(result.submitted_change > 0);
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files.len(), 2);
     assert!(desc[0].files.iter().all(|f| f.action == FileAction::Delete));
 }
@@ -1175,13 +1362,15 @@ fn test_changelist_builder_batched_delete() {
 #[test]
 fn test_changelist_builder_mixed_operations() {
     let test_client = SERVER.test_client();
-    test_client.changelist("Setup for mixed")
+    test_client
+        .changelist("Setup for mixed")
         .add_file("mix_edit.txt", b"original")
         .add_file("mix_del.txt", b"to delete")
         .submit()
         .unwrap();
 
-    let result = test_client.changelist("Mixed operations")
+    let result = test_client
+        .changelist("Mixed operations")
         .add_file("mix_add.txt", b"new file")
         .edit_file("mix_edit.txt", b"modified")
         .delete_file("mix_del.txt")
@@ -1189,7 +1378,11 @@ fn test_changelist_builder_mixed_operations() {
         .unwrap();
 
     assert!(result.submitted_change > 0);
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files.len(), 3);
 }
 
@@ -1201,14 +1394,19 @@ fn test_changelist_builder_immediate_mode() {
     fs::write(root.join("imm1.txt"), "immediate1").unwrap();
     fs::write(root.join("imm2.txt"), "immediate2").unwrap();
 
-    let mut builder = p4rs::ChangelistBuilder::new(&test_client.p4, root.clone(), "Immediate mode test")
-        .expect("Failed to create builder")
-        .immediate();
+    let mut builder =
+        p4rs::ChangelistBuilder::new(&test_client.p4, root.clone(), "Immediate mode test")
+            .expect("Failed to create builder")
+            .immediate();
 
     builder.add("imm1.txt").expect("Failed to add imm1");
     builder.add("imm2.txt").expect("Failed to add imm2");
 
-    let opened = test_client.p4.opened(&["//..."]).run().expect("Failed to get opened");
+    let opened = test_client
+        .p4
+        .opened(&["//..."])
+        .run()
+        .expect("Failed to get opened");
     assert_eq!(opened.len(), 2);
 
     builder.submit().expect("Failed to submit");
@@ -1216,8 +1414,8 @@ fn test_changelist_builder_immediate_mode() {
 
 #[test]
 fn test_changelist_builder_file_type_auto_detection() {
-    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::fs::symlink;
+    use std::os::unix::fs::PermissionsExt;
 
     let test_client = SERVER.test_client();
     let root = test_client.client_root().to_path_buf();
@@ -1231,7 +1429,8 @@ fn test_changelist_builder_file_type_auto_detection() {
     fs::write(root.join("link_target.txt"), "target").unwrap();
     symlink("link_target.txt", root.join("link_file.txt")).unwrap();
 
-    let result = test_client.changelist("File type detection test")
+    let result = test_client
+        .changelist("File type detection test")
         .add_file("text_file.txt", b"regular text")
         .add_file("exec_file.sh", b"#!/bin/bash\necho hello")
         .add_file_with_opts("link_file.txt", b"", Some(p4rs::FileType::symlink()))
@@ -1239,13 +1438,25 @@ fn test_changelist_builder_file_type_auto_detection() {
         .submit()
         .unwrap();
 
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files.len(), 4);
 
-    let exec_file = desc[0].files.iter().find(|f| f.depot_file.contains("exec_file")).unwrap();
+    let exec_file = desc[0]
+        .files
+        .iter()
+        .find(|f| f.depot_file.contains("exec_file"))
+        .unwrap();
     assert!(exec_file.file_type.executable);
 
-    let link_file = desc[0].files.iter().find(|f| f.depot_file.contains("link_file")).unwrap();
+    let link_file = desc[0]
+        .files
+        .iter()
+        .find(|f| f.depot_file.contains("link_file"))
+        .unwrap();
     assert_eq!(link_file.file_type.base, p4rs::BaseFileType::Symlink);
 }
 
@@ -1254,17 +1465,22 @@ fn test_changelist_builder_explicit_file_type() {
     let test_client = SERVER.test_client();
     let root = test_client.client_root().to_path_buf();
 
-    fs::write(root.join("binary_file.dat"), &[0u8, 1, 2, 3, 255]).unwrap();
+    fs::write(root.join("binary_file.dat"), [0u8, 1, 2, 3, 255]).unwrap();
 
     let mut builder = p4rs::ChangelistBuilder::new(&test_client.p4, root, "Explicit file type")
         .expect("Failed to create builder");
 
-    builder.add_with_type("binary_file.dat", p4rs::FileType::binary())
+    builder
+        .add_with_type("binary_file.dat", p4rs::FileType::binary())
         .expect("Failed to add with type");
 
     let result = builder.submit().expect("Failed to submit");
 
-    let desc = test_client.p4.describe(&[result.submitted_change]).run().expect("Failed to describe");
+    let desc = test_client
+        .p4
+        .describe(&[result.submitted_change])
+        .run()
+        .expect("Failed to describe");
     assert_eq!(desc[0].files[0].file_type.base, p4rs::BaseFileType::Binary);
 }
 
@@ -1278,15 +1494,29 @@ fn test_changelist_builder_add_nonexistent_file_error() {
 
     let result = builder.add("does_not_exist.txt");
     assert!(result.is_err());
-    test_client.p4.change().delete(builder.changelist).run().unwrap();
+    test_client
+        .p4
+        .change()
+        .delete(builder.changelist)
+        .run()
+        .unwrap();
 }
 
 #[test]
 fn test_protect_get() {
     let admin_p4 = SERVER.admin_p4();
-    let table = admin_p4.protect().get().run().expect("Failed to get protections").single().expect("Expected single result");
+    let table = admin_p4
+        .protect()
+        .get()
+        .run()
+        .expect("Failed to get protections")
+        .single()
+        .expect("Expected single result");
     assert!(!table.protections.is_empty());
-    assert!(table.protections.iter().any(|p| p.name == "admin" && p.access == p4rs::AccessLevel::Super));
+    assert!(table
+        .protections
+        .iter()
+        .any(|p| p.name == "admin" && p.access == p4rs::AccessLevel::Super));
 }
 
 #[test]
@@ -1296,16 +1526,18 @@ fn test_protect_set() {
         p4rs::Protection::super_user("admin", "*", "//..."),
         p4rs::Protection::write_user("*", "*", "//..."),
     ]);
-    let result = admin_p4.protect().set(&table).run().expect("Failed to set protections");
+    let result = admin_p4
+        .protect()
+        .set(&table)
+        .run()
+        .expect("Failed to set protections");
     assert!(!result.is_empty());
 }
 
 #[test]
 fn test_non_admin_cannot_modify_protections() {
     let test_client = SERVER.test_client();
-    let table = p4rs::ProtectionTable::new(vec![
-        p4rs::Protection::write_user("*", "*", "//..."),
-    ]);
+    let table = p4rs::ProtectionTable::new(vec![p4rs::Protection::write_user("*", "*", "//...")]);
     let result = test_client.p4.protect().set(&table).run();
     assert!(matches!(result, Err(P4Error::PermissionDenied(_))));
 }
@@ -1313,7 +1545,11 @@ fn test_non_admin_cannot_modify_protections() {
 #[test]
 fn test_admin_p4_can_perform_admin_operations() {
     let admin_p4 = SERVER.admin_p4();
-    let table = admin_p4.protect().get().run().expect("Failed to get protections with admin");
+    let table = admin_p4
+        .protect()
+        .get()
+        .run()
+        .expect("Failed to get protections with admin");
     assert!(table.single().is_ok());
 }
 
@@ -1321,7 +1557,11 @@ fn test_admin_p4_can_perform_admin_operations() {
 fn test_admin_p4_function() {
     let test_client = SERVER.test_client();
     let admin = p4rs::testkit::admin_p4(&test_client.p4);
-    let table = admin.protect().get().run().expect("Failed to get protections");
+    let table = admin
+        .protect()
+        .get()
+        .run()
+        .expect("Failed to get protections");
     assert!(table.single().is_ok());
 }
 

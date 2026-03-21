@@ -296,7 +296,10 @@ pub fn spawn_collector(
     });
 }
 
-fn write_event(db_path: &str, event: &ObservabilityEvent) -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn write_event(
+    db_path: &str,
+    event: &ObservabilityEvent,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let conn = rusqlite::Connection::open(db_path)?;
     let payload = serde_json::to_string(event)?;
     let timestamp_ms = event.timestamp().timestamp_millis();
@@ -313,7 +316,10 @@ fn write_event(db_path: &str, event: &ObservabilityEvent) -> std::result::Result
     Ok(())
 }
 
-fn prune_events(db_path: &str, retention_days: u32) -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn prune_events(
+    db_path: &str,
+    retention_days: u32,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let conn = rusqlite::Connection::open(db_path)?;
     let cutoff_ms = (Utc::now() - chrono::Duration::days(retention_days as i64)).timestamp_millis();
     let deleted = conn.execute(
@@ -392,20 +398,28 @@ mod tests {
         ).unwrap();
 
         // Verify 2 rows
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 2);
 
         // Prune with 30-day retention — should delete the old one
         let cutoff_ms = (Utc::now() - chrono::Duration::days(30)).timestamp_millis();
-        conn.execute("DELETE FROM events WHERE timestamp < ?1", rusqlite::params![cutoff_ms]).unwrap();
+        conn.execute(
+            "DELETE FROM events WHERE timestamp < ?1",
+            rusqlite::params![cutoff_ms],
+        )
+        .unwrap();
 
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1);
 
         // Remaining event should be the recent one
-        let remaining_user: String = conn.query_row(
-            "SELECT user FROM events", [], |r| r.get(0)
-        ).unwrap();
+        let remaining_user: String = conn
+            .query_row("SELECT user FROM events", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(remaining_user, "bob");
     }
 }

@@ -131,7 +131,8 @@ impl P4 {
 
             match p4_process.cmd_type {
                 CmdType::FormInput => {
-                    let msg = P4Message::new(3, 0, String::from_utf8_lossy(&output.stderr).into_owned());
+                    let msg =
+                        P4Message::new(3, 0, String::from_utf8_lossy(&output.stderr).into_owned());
                     return Err(P4Error::command(vec![msg]));
                 }
                 _ => {
@@ -154,7 +155,6 @@ impl P4 {
             .map(|e| P4Message::new(e.severity as u8, e.generic.unwrap_or(0) as u8, e.data))
             .collect()
     }
-
 
     fn is_message_line(line: &str) -> bool {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
@@ -216,9 +216,9 @@ impl P4 {
     ) -> Result<P4Output<T>, P4Error> {
         let output = self.run_command(p4_process, None)?;
         let (json, messages) = self.parse_output_with_messages(&output, multi_line)?;
-        
+
         let (errors, warnings): (Vec<_>, Vec<_>) = messages.into_iter().partition(|m| m.is_error());
-        
+
         if !errors.is_empty() {
             return Err(P4Error::command_with_partial(errors, json));
         }
@@ -244,15 +244,19 @@ impl P4 {
         self.run_json_inner(p4_process, false)
     }
 
-    fn run_json_inner(&self, p4_process: P4Process, multi_line: bool) -> Result<serde_json::Value, P4Error> {
+    fn run_json_inner(
+        &self,
+        p4_process: P4Process,
+        multi_line: bool,
+    ) -> Result<serde_json::Value, P4Error> {
         let output = self.run_command(p4_process, None)?;
         let (json, messages) = self.parse_output_with_messages(&output, multi_line)?;
-        
+
         let errors: Vec<_> = messages.into_iter().filter(|m| m.is_error()).collect();
         if !errors.is_empty() {
             return Err(P4Error::command_with_partial(errors, json));
         }
-        
+
         Ok(json)
     }
 

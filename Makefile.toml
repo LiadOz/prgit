@@ -1,22 +1,42 @@
 [tasks.fmt]
+workspace = false
 command = "cargo"
 args = ["fmt", "--all", "--", "--check"]
 
 [tasks.lint]
+workspace = false
 command = "cargo"
 args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
 [tasks.test]
+workspace = false
 command = "cargo"
 args = ["test", "--all", "--", "--nocapture"]
+
+[tasks.test-local]
+description = "Run all tests using local p4d instead of Docker"
+workspace = false
+command = "cargo"
+args = ["test", "--all", "--features", "testkit-local", "--", "--nocapture"]
 
 [tasks.cov]
 command = "cargo"
 args = ["llvm-cov"]
 
+[tasks.cov-local]
+command = "cargo"
+args = ["llvm-cov", "--features", "testkit-local"]
+
 [tasks.audit]
+workspace = false
 command = "cargo"
 args = ["audit"]
 
 [tasks.ci]
-dependencies = ["fmt", "lint", "test", "cov", "audit"]
+workspace = false
+dependencies = ["fmt", "lint", "test", "audit"]
+
+[tasks.ci-local]
+description = "CI using local p4d instead of Docker"
+workspace = false
+dependencies = ["fmt", "lint", "test-local", "audit"]

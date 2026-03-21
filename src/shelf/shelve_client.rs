@@ -1,5 +1,5 @@
+use p4rs::{ChangeSpec, ChangeType, ChangelistBuilder, P4Command, P4Error, P4};
 use std::path::{Path, PathBuf};
-use p4rs::{P4, P4Error, P4Command, ChangeSpec, ChangeType, ChangelistBuilder};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum FileAction {
@@ -27,10 +27,14 @@ impl ShelveClient {
     pub fn new(p4: P4, client_name: &str, client_root: PathBuf) -> Result<Self, P4Error> {
         let p4 = p4.client_name(client_name);
         Self::cleanup_workspace(&p4, &client_root)?;
-        Ok(Self { p4, client_name: client_name.to_string(), client_root })
+        Ok(Self {
+            p4,
+            client_name: client_name.to_string(),
+            client_root,
+        })
     }
 
-    fn cleanup_workspace(p4: &P4, client_root: &PathBuf) -> Result<(), P4Error> {
+    fn cleanup_workspace(p4: &P4, client_root: &Path) -> Result<(), P4Error> {
         let _ = p4.revert(&["//..."]).run();
         let _ = p4.sync(&["//...#none"]).run();
         let _ = Self::clear_directory_contents(client_root);
@@ -59,11 +63,12 @@ impl ShelveClient {
         for file in files {
             let depot_path = format!("//{}/{}@{base_change}", self.client_name, file);
             if self.p4.files(&[&depot_path]).run().is_err() {
-                continue
+                continue;
             }
             match self.p4.sync(&[&depot_path]).run() {
-                Err(P4Error::Command { ref errors, .. }) if errors.iter().any(|e| e.data.contains("file(s) up-to-date")) => {},
-                Ok(_) => {},
+                Err(P4Error::Command { ref errors, .. })
+                    if errors.iter().any(|e| e.data.contains("file(s) up-to-date")) => {}
+                Ok(_) => {}
                 Err(e) => return Err(e),
             }
         }
@@ -94,8 +99,14 @@ impl ShelveClient {
         Ok(())
     }
 
-    fn apply_changes(&self, changelist: usize, base_dir: &Path, changes: &[FileChange]) -> Result<(), P4Error> {
-        let mut builder = ChangelistBuilder::with_changelist(&self.p4, self.client_root.clone(), changelist);
+    fn apply_changes(
+        &self,
+        changelist: usize,
+        base_dir: &Path,
+        changes: &[FileChange],
+    ) -> Result<(), P4Error> {
+        let mut builder =
+            ChangelistBuilder::with_changelist(&self.p4, self.client_root.clone(), changelist);
         for change in changes {
             let src = base_dir.join(change.path);
             let dest = self.client_root.join(change.path);
@@ -108,11 +119,13 @@ impl ShelveClient {
                     let new_type = ChangelistBuilder::determine_file_type(&src)?;
                     let old_type = ChangelistBuilder::determine_file_type(&dest)?;
                     let full_path = self.client_root.join(change.path);
-                    self.p4.edit(&[full_path.to_string_lossy().as_ref()])
+                    self.p4
+                        .edit(&[full_path.to_string_lossy().as_ref()])
                         .changelist(changelist)
                         .run()?;
                     if new_type != old_type {
-                        self.p4.reopen(&[full_path.to_string_lossy().as_ref()])
+                        self.p4
+                            .reopen(&[full_path.to_string_lossy().as_ref()])
                             .changelist(changelist)
                             .file_type(new_type)
                             .run()?;
@@ -127,22 +140,42 @@ impl ShelveClient {
         builder.flush()
     }
 
-    pub fn create_or_reuse_changelist(&self, description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
+    pub fn create_or_reuse_changelist(
+        &self,
+        description: &str,
+        original_change: Option<usize>,
+    ) -> Result<usize, P4Error> {
         match original_change {
             Some(cl) => Ok(cl),
             None => self.create_empty_change(description),
         }
     }
 
-    pub fn shelve_changelist(&self, cl: usize, base_change: usize, base_dir: &Path, changes: &[FileChange]) -> Result<(), P4Error> {
-        self.sync(base_change, &changes.iter().map(|c| c.path).collect::<Vec<&str>>())?;
+    pub fn shelve_changelist(
+        &self,
+        cl: usize,
+        base_change: usize,
+        base_dir: &Path,
+        changes: &[FileChange],
+    ) -> Result<(), P4Error> {
+        self.sync(
+            base_change,
+            &changes.iter().map(|c| c.path).collect::<Vec<&str>>(),
+        )?;
         self.apply_changes(cl, base_dir, changes)?;
         self.p4.shelve().set(cl).replace().run()?;
         Self::cleanup_workspace(&self.p4, &self.client_root)?;
         Ok(())
     }
 
-    pub fn run(&self, base_change: usize, base_dir: &Path, changes: &[FileChange], description: &str, original_change: Option<usize>) -> Result<usize, P4Error> {
+    pub fn run(
+        &self,
+        base_change: usize,
+        base_dir: &Path,
+        changes: &[FileChange],
+        description: &str,
+        original_change: Option<usize>,
+    ) -> Result<usize, P4Error> {
         let cl = self.create_or_reuse_changelist(description, original_change)?;
         self.shelve_changelist(cl, base_change, base_dir, changes)?;
         Ok(cl)
@@ -159,11 +192,14 @@ mod tests {
     use test_log::test;
 
     fn setup_test_files(test_client: &p4rs::testkit::TestClient) -> usize {
-        test_client.changelist("Setup files")
+        test_client
+            .changelist("Setup files")
             .add_file("file1.txt", b"content 1")
             .add_file("file2.txt", b"content 2")
             .add_file("subdir/file3.txt", b"content 3")
-            .submit().unwrap().submitted_change
+            .submit()
+            .unwrap()
+            .submitted_change
     }
 
     fn cleanup_shelved_change(tc: &p4rs::testkit::TestClient, cl: usize) {
@@ -183,10 +219,16 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "new.txt", action: FileAction::Add }];
-        let cl = client.run(0, &tmp.path(), &changes, "Add new file", None).unwrap();
+        let changes = [FileChange {
+            path: "new.txt",
+            action: FileAction::Add,
+        }];
+        let cl = client
+            .run(0, tmp.path(), &changes, "Add new file", None)
+            .unwrap();
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add new file");
         cleanup_shelved_change(&tc, cl);
@@ -204,11 +246,17 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "file1.txt", action: FileAction::Edit }];
-        let cl = client.run(base, tmp.path(), &changes, "Edit file", None).unwrap();
-        
+        let changes = [FileChange {
+            path: "file1.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Edit file", None)
+            .unwrap();
+
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Edit file");
         cleanup_shelved_change(&tc, cl);
@@ -225,11 +273,17 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "file1.txt", action: FileAction::Delete }];
-        let cl = client.run(base, tmp.path(), &changes, "Delete file", None).unwrap();
-        
+        let changes = [FileChange {
+            path: "file1.txt",
+            action: FileAction::Delete,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Delete file", None)
+            .unwrap();
+
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Delete file");
         cleanup_shelved_change(&tc, cl);
@@ -250,11 +304,17 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "script.sh", action: FileAction::Add }];
-        let cl = client.run(0, tmp.path(), &changes, "Add executable", None).unwrap();
-        
+        let changes = [FileChange {
+            path: "script.sh",
+            action: FileAction::Add,
+        }];
+        let cl = client
+            .run(0, tmp.path(), &changes, "Add executable", None)
+            .unwrap();
+
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add executable");
         cleanup_shelved_change(&tc, cl);
@@ -273,15 +333,27 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let changes = [
-            FileChange { path: "new.txt", action: FileAction::Add },
-            FileChange { path: "file2.txt", action: FileAction::Edit },
-            FileChange { path: "file1.txt", action: FileAction::Delete },
+            FileChange {
+                path: "new.txt",
+                action: FileAction::Add,
+            },
+            FileChange {
+                path: "file2.txt",
+                action: FileAction::Edit,
+            },
+            FileChange {
+                path: "file1.txt",
+                action: FileAction::Delete,
+            },
         ];
-        let cl = client.run(base, tmp.path(), &changes, "Multiple changes", None).unwrap();
-        
+        let cl = client
+            .run(base, tmp.path(), &changes, "Multiple changes", None)
+            .unwrap();
+
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Multiple changes");
         cleanup_shelved_change(&tc, cl);
@@ -295,7 +367,8 @@ mod tests {
                 tc.p4.clone(),
                 &tc.client_name,
                 tc.client_root().to_path_buf(),
-            ).unwrap();
+            )
+            .unwrap();
         }
         let opened = tc.p4.opened(&["//..."]).run().unwrap();
         assert!(opened.is_empty());
@@ -304,35 +377,51 @@ mod tests {
     #[test]
     fn test_shelve_correct_base_revision() {
         let tc = SERVER.test_client();
-        
+
         tc.changelist("Rev 1")
             .add_file("evolving.txt", b"version 1")
-            .submit();
-        
-        let base2 = tc.changelist("Rev 2")
+            .submit()
+            .expect("submit rev 1");
+
+        let base2 = tc
+            .changelist("Rev 2")
             .edit_file("evolving.txt", b"version 2")
-            .submit().unwrap().submitted_change;
-        
+            .submit()
+            .expect("submit rev 2")
+            .submitted_change;
+
         tc.changelist("Rev 3")
             .edit_file("evolving.txt", b"version 3")
-            .submit();
-        
+            .submit()
+            .expect("submit rev 3");
+
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("evolving.txt"), b"shelved content").unwrap();
-        
+
         let client = ShelveClient::new(
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
-        
-        let changes = [FileChange { path: "evolving.txt", action: FileAction::Edit }];
-        
-        let cl = client.run(base2, tmp.path(), &changes, "Edit from base2", None)
+        )
+        .unwrap();
+
+        let changes = [FileChange {
+            path: "evolving.txt",
+            action: FileAction::Edit,
+        }];
+
+        let cl = client
+            .run(base2, tmp.path(), &changes, "Edit from base2", None)
             .expect("Failed to run shelve client");
-        
-        let shelved = tc.p4.describe(&[cl]).shelved().run()
-            .expect("Failed to describe shelved").single().unwrap();
+
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .expect("Failed to describe shelved")
+            .single()
+            .unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert_eq!(shelved.files[0].rev, Some(2));
         assert!(shelved.files[0].depot_file.ends_with("evolving.txt"));
@@ -342,7 +431,6 @@ mod tests {
     #[test]
     fn test_shelve_add_symlink() {
         use std::os::unix::fs::symlink;
-        use p4rs::FileType;
         let tc = SERVER.test_client();
         setup_test_files(&tc);
 
@@ -353,12 +441,25 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "link.txt", action: FileAction::Add }];
-        let cl = client.run(0, tmp.path(), &changes, "Add symlink", None).unwrap();
+        let changes = [FileChange {
+            path: "link.txt",
+            action: FileAction::Add,
+        }];
+        let cl = client
+            .run(0, tmp.path(), &changes, "Add symlink", None)
+            .unwrap();
 
-        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert!(shelved.files[0].depot_file.ends_with("link.txt"));
         assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
@@ -368,16 +469,19 @@ mod tests {
 
     #[test]
     fn test_shelve_edit_symlink() {
-        use std::os::unix::fs::symlink;
         use p4rs::FileType;
+        use std::os::unix::fs::symlink;
         let tc = SERVER.test_client();
 
         fs::write(tc.client_root().join("original_target.txt"), b"original").unwrap();
         let link_path = tc.client_root().join("link.txt");
         symlink("original_target.txt", &link_path).unwrap();
-        let base = tc.changelist("Setup symlink")
+        let base = tc
+            .changelist("Setup symlink")
             .add_file_with_opts("link.txt", b"", Some(FileType::symlink()))
-            .submit().unwrap().submitted_change;
+            .submit()
+            .unwrap()
+            .submitted_change;
 
         let tmp = TempDir::new().unwrap();
         symlink("new_target.txt", tmp.path().join("link.txt")).unwrap();
@@ -386,12 +490,25 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "link.txt", action: FileAction::Edit }];
-        let cl = client.run(base, tmp.path(), &changes, "Edit symlink", None).unwrap();
+        let changes = [FileChange {
+            path: "link.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Edit symlink", None)
+            .unwrap();
 
-        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert!(shelved.files[0].depot_file.ends_with("link.txt"));
         assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
@@ -402,12 +519,14 @@ mod tests {
     #[test]
     fn test_shelve_file_to_symlink() {
         use std::os::unix::fs::symlink;
-        use p4rs::FileType;
         let tc = SERVER.test_client();
 
-        let base = tc.changelist("Setup regular file")
+        let base = tc
+            .changelist("Setup regular file")
             .add_file("config.txt", b"original content")
-            .submit().unwrap().submitted_change;
+            .submit()
+            .unwrap()
+            .submitted_change;
 
         let tmp = TempDir::new().unwrap();
         symlink("shared_config.txt", tmp.path().join("config.txt")).unwrap();
@@ -416,12 +535,25 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "config.txt", action: FileAction::Edit }];
-        let cl = client.run(base, tmp.path(), &changes, "Convert to symlink", None).unwrap();
+        let changes = [FileChange {
+            path: "config.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Convert to symlink", None)
+            .unwrap();
 
-        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert!(shelved.files[0].depot_file.ends_with("config.txt"));
         assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
@@ -431,16 +563,19 @@ mod tests {
 
     #[test]
     fn test_shelve_symlink_to_file() {
-        use std::os::unix::fs::symlink;
         use p4rs::FileType;
+        use std::os::unix::fs::symlink;
         let tc = SERVER.test_client();
 
         fs::write(tc.client_root().join("shared_config.txt"), b"shared").unwrap();
         let link_path = tc.client_root().join("config.txt");
         symlink("shared_config.txt", &link_path).unwrap();
-        let base = tc.changelist("Setup symlink")
+        let base = tc
+            .changelist("Setup symlink")
             .add_file_with_opts("config.txt", b"", Some(FileType::symlink()))
-            .submit().unwrap().submitted_change;
+            .submit()
+            .unwrap()
+            .submitted_change;
 
         let tmp = TempDir::new().unwrap();
         fs::write(tmp.path().join("config.txt"), b"inline content").unwrap();
@@ -449,17 +584,29 @@ mod tests {
             tc.p4.clone(),
             &tc.client_name,
             tc.client_root().to_path_buf(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let changes = [FileChange { path: "config.txt", action: FileAction::Edit }];
-        let cl = client.run(base, tmp.path(), &changes, "Convert to regular file", None).unwrap();
+        let changes = [FileChange {
+            path: "config.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Convert to regular file", None)
+            .unwrap();
 
-        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
         assert_eq!(shelved.files.len(), 1);
         assert!(shelved.files[0].depot_file.ends_with("config.txt"));
         assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Text);
 
         cleanup_shelved_change(&tc, cl);
     }
-
 }

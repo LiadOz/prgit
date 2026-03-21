@@ -1,6 +1,6 @@
 use git2::{FileMode, Repository};
 use p4rs::testkit::{TestClient, SERVER};
-use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4, P4Command, SubmitResult};
+use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4Command, SubmitResult};
 use prgit::mirror::{HashMapMirrorData, IntegrateStrategy, Mirror, MirrorData};
 use std::collections::HashMap;
 use std::fs;
@@ -43,7 +43,8 @@ fn test_multiple_files_one_change() {
         .changelist("Add files")
         .add_file("a.txt", b"a")
         .add_file("b.txt", b"b")
-        .submit();
+        .submit()
+        .expect("submit failed");
 
     env.mirror().run().expect("Mirror failed");
     env.assert_p4_matches_git();
@@ -85,15 +86,28 @@ fn test_merge_with_branch_parent() {
 
     env.create_git_branch("feature");
 
-    let original_cl = env.p4_client.p4.change()
+    let original_cl = env
+        .p4_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Merge commit"))
-        .run().expect("Failed to create change").single().unwrap();
+        .run()
+        .expect("Failed to create change")
+        .single()
+        .unwrap();
     let file_path = env.p4_client.client_root().join("merged.txt");
     fs::write(&file_path, "merged").expect("Failed to write");
-    env.p4_client.p4.add(&[file_path.to_str().unwrap()])
+    env.p4_client
+        .p4
+        .add(&[file_path.to_str().unwrap()])
         .changelist(original_cl)
-        .run().expect("Failed to add");
-    env.p4_client.p4.submit(original_cl).run().expect("Failed to submit");
+        .run()
+        .expect("Failed to add");
+    env.p4_client
+        .p4
+        .submit(original_cl)
+        .run()
+        .expect("Failed to submit");
 
     let mut data = env.default_data();
     data.set_last_sync_change(base.submitted_change);
@@ -109,15 +123,28 @@ fn test_merge_missing_branch_skipped() {
     let base = env.commit_file("base.txt", "base", "Base commit");
     env.mirror().run().expect("Mirror failed");
 
-    let original_cl = env.p4_client.p4.change()
+    let original_cl = env
+        .p4_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Merge commit"))
-        .run().expect("Failed to create change").single().unwrap();
+        .run()
+        .expect("Failed to create change")
+        .single()
+        .unwrap();
     let file_path = env.p4_client.client_root().join("merged.txt");
     fs::write(&file_path, "merged").expect("Failed to write");
-    env.p4_client.p4.add(&[file_path.to_str().unwrap()])
+    env.p4_client
+        .p4
+        .add(&[file_path.to_str().unwrap()])
         .changelist(original_cl)
-        .run().expect("Failed to add");
-    env.p4_client.p4.submit(original_cl).run().expect("Failed to submit");
+        .run()
+        .expect("Failed to add");
+    env.p4_client
+        .p4
+        .submit(original_cl)
+        .run()
+        .expect("Failed to submit");
 
     let mut data = env.default_data();
     data.set_last_sync_change(base.submitted_change);
@@ -133,8 +160,13 @@ fn test_executable_file() {
     let env = MirrorTestEnv::new();
     env.p4_client
         .changelist("Add executable")
-        .add_file_with_opts("script.sh", b"#!/bin/bash\necho hello", Some(FileType::text().executable()))
-        .submit();
+        .add_file_with_opts(
+            "script.sh",
+            b"#!/bin/bash\necho hello",
+            Some(FileType::text().executable()),
+        )
+        .submit()
+        .expect("submit failed");
 
     env.mirror().run().expect("Mirror failed");
     let git_files = env.get_git_files();
@@ -148,7 +180,8 @@ fn test_binary_file() {
     env.p4_client
         .changelist("Add binary")
         .add_file_with_opts("data.bin", &binary_content, Some(FileType::binary()))
-        .submit();
+        .submit()
+        .expect("submit failed");
 
     env.mirror().run().expect("Mirror failed");
     let git_files = env.get_git_files();
@@ -167,7 +200,11 @@ fn test_special_characters_in_path() {
 fn test_many_sequential_changes() {
     let env = MirrorTestEnv::new();
     for i in 0..50 {
-        env.commit_file(&format!("file_{}.txt", i), &format!("content {}", i), &format!("Add file {}", i));
+        env.commit_file(
+            &format!("file_{}.txt", i),
+            &format!("content {}", i),
+            &format!("Add file {}", i),
+        );
     }
     env.mirror().run().expect("Mirror failed");
     env.assert_p4_matches_git();
@@ -192,7 +229,11 @@ fn test_resume_partial_sync() {
 fn test_max_changes_batching() {
     let env = MirrorTestEnv::new();
     for i in 0..10 {
-        env.commit_file(&format!("file_{}.txt", i), &format!("content {}", i), &format!("Add {}", i));
+        env.commit_file(
+            &format!("file_{}.txt", i),
+            &format!("content {}", i),
+            &format!("Add {}", i),
+        );
     }
 
     let data = HashMapMirrorData::new(
@@ -216,14 +257,23 @@ fn test_symlink_file() {
     let link_path = env.p4_client.client_root().join("config.txt");
     symlink("shared_config.txt", &link_path).unwrap();
 
-    let cl = env.p4_client.p4.change()
+    let cl = env
+        .p4_client
+        .p4
+        .change()
         .set(&ChangeSpec::new(ChangeType::New).description("Add symlink"))
-        .run().unwrap().single().unwrap();
+        .run()
+        .unwrap()
+        .single()
+        .unwrap();
 
-    env.p4_client.p4.add(&[link_path.to_str().unwrap()])
+    env.p4_client
+        .p4
+        .add(&[link_path.to_str().unwrap()])
         .changelist(cl)
         .file_type(FileType::symlink())
-        .run().unwrap();
+        .run()
+        .unwrap();
     env.p4_client.p4.submit(cl).run().unwrap();
 
     env.mirror().run().expect("Mirror should handle symlinks");
@@ -234,7 +284,9 @@ fn test_symlink_file() {
     let head = repo.head().unwrap();
     let commit = head.peel_to_commit().unwrap();
     let tree = commit.tree().unwrap();
-    let entry = tree.get_name("config.txt").expect("config.txt should exist in tree");
+    let entry = tree
+        .get_name("config.txt")
+        .expect("config.txt should exist in tree");
     assert_eq!(entry.filemode(), i32::from(FileMode::Link));
     let blob = repo.find_blob(entry.id()).unwrap();
     assert_eq!(
@@ -346,12 +398,7 @@ impl MirrorTestEnv {
             .expect("Failed to get depot prefix")
             .to_string();
 
-        let print_result = self
-            .p4_client
-            .p4
-            .print()
-            .content(&[&client_path])
-            .run();
+        let print_result = self.p4_client.p4.print().content(&[&client_path]).run();
 
         let mut files = HashMap::new();
         if let Ok(results) = print_result {
@@ -381,30 +428,8 @@ impl MirrorTestEnv {
         )
         .expect("Failed to clone bare repo");
 
-        self.collect_files_recursive(clone_dir.path(), clone_dir.path(), &mut files);
+        collect_files_recursive(clone_dir.path(), clone_dir.path(), &mut files);
         files
-    }
-
-    fn collect_files_recursive(
-        &self,
-        base: &std::path::Path,
-        dir: &std::path::Path,
-        files: &mut HashMap<String, Vec<u8>>,
-    ) {
-        for entry in fs::read_dir(dir).expect("Failed to read dir") {
-            let entry = entry.expect("Failed to read entry");
-            let path = entry.path();
-            if path.file_name().map(|n| n == ".git").unwrap_or(false) {
-                continue;
-            }
-            if path.is_dir() {
-                self.collect_files_recursive(base, &path, files);
-            } else {
-                let rel = path.strip_prefix(base).expect("Failed to strip prefix");
-                let content = fs::read(&path).expect("Failed to read file");
-                files.insert(rel.to_string_lossy().to_string(), content);
-            }
-        }
     }
 
     fn git_commit_count(&self) -> usize {
@@ -443,3 +468,23 @@ impl MirrorTestEnv {
     }
 }
 
+fn collect_files_recursive(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    files: &mut HashMap<String, Vec<u8>>,
+) {
+    for entry in fs::read_dir(dir).expect("Failed to read dir") {
+        let entry = entry.expect("Failed to read entry");
+        let path = entry.path();
+        if path.file_name().map(|n| n == ".git").unwrap_or(false) {
+            continue;
+        }
+        if path.is_dir() {
+            collect_files_recursive(base, &path, files);
+        } else {
+            let rel = path.strip_prefix(base).expect("Failed to strip prefix");
+            let content = fs::read(&path).expect("Failed to read file");
+            files.insert(rel.to_string_lossy().to_string(), content);
+        }
+    }
+}

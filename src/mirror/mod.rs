@@ -1,5 +1,6 @@
 mod commit_builder;
 mod error;
+#[allow(clippy::module_inception)]
 mod mirror;
 mod mirror_data;
 

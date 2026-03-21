@@ -70,6 +70,6 @@ where
     let s: Option<String> = Option::deserialize(deserializer)?;
     // P4 sometimes returns numeric type codes like "000" for move operations.
     // Default to text when we can't parse the type.
-    Ok(s.and_then(|s| s.parse().ok()).unwrap_or_else(FileType::text))
+    Ok(s.and_then(|s| s.parse().ok())
+        .unwrap_or_else(FileType::text))
 }
-

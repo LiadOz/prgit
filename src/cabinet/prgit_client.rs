@@ -41,6 +41,7 @@ pub struct PrgitClient<'a> {
 }
 
 impl<'a> PrgitClient<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         conn: &'a Connection,
         client_id: u64,
@@ -62,7 +63,10 @@ impl<'a> PrgitClient<'a> {
                 p4port,
                 p4user,
             },
-            git_config: GitConfig { repo_path, synced_branch },
+            git_config: GitConfig {
+                repo_path,
+                synced_branch,
+            },
             integrate_strategy,
             max_changes_query,
         }
@@ -267,8 +271,14 @@ mod tests {
         let client_id = db
             .create_prgit_client("test-client", "/usr/bin/p4", "localhost:1666", "testuser")
             .unwrap();
-        db.create_prgit_repo(client_id, "/path/to/repo", "master", IntegrateStrategy::MergeOurs, Some(50))
-            .unwrap();
+        db.create_prgit_repo(
+            client_id,
+            "/path/to/repo",
+            "master",
+            IntegrateStrategy::MergeOurs,
+            Some(50),
+        )
+        .unwrap();
         (db, client_id)
     }
 
@@ -305,7 +315,10 @@ mod tests {
     fn prgit_client_integrate_strategy() {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
-        assert!(matches!(client.integrate_strategy(), IntegrateStrategy::MergeOurs));
+        assert!(matches!(
+            client.integrate_strategy(),
+            IntegrateStrategy::MergeOurs
+        ));
     }
 
     #[test]
@@ -335,7 +348,10 @@ mod tests {
         let (db, client_id) = setup_prgit_client();
         let mut client = db.client(client_id).unwrap().unwrap();
         client.set_user_email("jdoe", "jdoe@example.com");
-        assert_eq!(client.get_user_email("jdoe"), Some("jdoe@example.com".to_string()));
+        assert_eq!(
+            client.get_user_email("jdoe"),
+            Some("jdoe@example.com".to_string())
+        );
     }
 
     #[test]
@@ -343,7 +359,10 @@ mod tests {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
         client.map_commit_to_change("abc123", 100);
-        assert_eq!(client.get_commit_for_change(100), Some("abc123".to_string()));
+        assert_eq!(
+            client.get_commit_for_change(100),
+            Some("abc123".to_string())
+        );
         assert_eq!(client.get_change_for_commit("abc123"), Some(100));
     }
 
@@ -365,7 +384,9 @@ mod tests {
     fn get_shelved_change_for_branch_returns_none_when_not_set() {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
-        assert!(client.get_shelved_change_for_branch("feature/test").is_none());
+        assert!(client
+            .get_shelved_change_for_branch("feature/test")
+            .is_none());
     }
 
     #[test]
@@ -373,7 +394,10 @@ mod tests {
         let (db, client_id) = setup_prgit_client();
         let client = db.client(client_id).unwrap().unwrap();
         client.set_shelved_change_for_branch("feature/test", 12345, "jdoe");
-        assert_eq!(client.get_shelved_change_for_branch("feature/test"), Some(12345));
+        assert_eq!(
+            client.get_shelved_change_for_branch("feature/test"),
+            Some(12345)
+        );
     }
 
     #[test]
@@ -382,7 +406,10 @@ mod tests {
         let client = db.client(client_id).unwrap().unwrap();
         client.set_shelved_change_for_branch("feature/test", 100, "jdoe");
         client.set_shelved_change_for_branch("feature/test", 200, "jdoe");
-        assert_eq!(client.get_shelved_change_for_branch("feature/test"), Some(200));
+        assert_eq!(
+            client.get_shelved_change_for_branch("feature/test"),
+            Some(200)
+        );
     }
 
     #[test]
@@ -391,7 +418,9 @@ mod tests {
         let client = db.client(client_id).unwrap().unwrap();
         client.set_shelved_change_for_branch("feature/test", 12345, "jdoe");
         client.clear_shelved_change_for_branch("feature/test");
-        assert!(client.get_shelved_change_for_branch("feature/test").is_none());
+        assert!(client
+            .get_shelved_change_for_branch("feature/test")
+            .is_none());
     }
 
     #[test]
@@ -446,9 +475,15 @@ mod tests {
         // Set up alias: CL 200 is alias for shelved CL 100
         client.set_cl_alias(200, 100);
         // Direct lookup for CL 100
-        assert_eq!(client.get_branch_for_change(100), Some("refs/heads/feature-x".to_string()));
+        assert_eq!(
+            client.get_branch_for_change(100),
+            Some("refs/heads/feature-x".to_string())
+        );
         // Alias lookup for CL 200
-        assert_eq!(client.get_branch_for_change(200), Some("refs/heads/feature-x".to_string()));
+        assert_eq!(
+            client.get_branch_for_change(200),
+            Some("refs/heads/feature-x".to_string())
+        );
     }
 
     #[test]

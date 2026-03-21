@@ -64,17 +64,35 @@ impl Drop for TestClient {
         let mut issues = Vec::new();
         if let Ok(opened) = self.p4.opened(&["//..."]).run() {
             if !opened.is_empty() {
-                issues.push(format!("open files: {:?}", opened.iter().map(|f| &f.depot_file).collect::<Vec<_>>()));
+                issues.push(format!(
+                    "open files: {:?}",
+                    opened.iter().map(|f| &f.depot_file).collect::<Vec<_>>()
+                ));
             }
         }
-        if let Ok(pending) = self.p4.changes(&[]).status(ChangeStatus::Pending).client(&self.client_name).run() {
+        if let Ok(pending) = self
+            .p4
+            .changes(&[])
+            .status(ChangeStatus::Pending)
+            .client(&self.client_name)
+            .run()
+        {
             if !pending.is_empty() {
-                issues.push(format!("pending changelists: {:?}", pending.iter().map(|c| c.change).collect::<Vec<_>>()));
+                issues.push(format!(
+                    "pending changelists: {:?}",
+                    pending.iter().map(|c| c.change).collect::<Vec<_>>()
+                ));
             }
         }
         if !issues.is_empty() {
             let _ = self.p4.revert(&["//..."]).run();
-            if let Ok(pending) = self.p4.changes(&[]).status(ChangeStatus::Pending).client(&self.client_name).run() {
+            if let Ok(pending) = self
+                .p4
+                .changes(&[])
+                .status(ChangeStatus::Pending)
+                .client(&self.client_name)
+                .run()
+            {
                 for change in pending {
                     let _ = self.p4.shelve().delete(change.change).run();
                     let _ = self.p4.change().delete(change.change).run();
@@ -83,7 +101,11 @@ impl Drop for TestClient {
             let _ = self.p4.client().delete(&self.client_name).run();
             panic!("Test left invalid state - {}", issues.join(", "));
         }
-        self.p4.client().delete(&self.client_name).run().expect("Failed to delete client");
+        self.p4
+            .client()
+            .delete(&self.client_name)
+            .run()
+            .expect("Failed to delete client");
     }
 }
 
@@ -102,7 +124,12 @@ impl<'p> ChangelistBuilder<'p> {
         self
     }
 
-    pub fn add_file_with_opts(mut self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> Self {
+    pub fn add_file_with_opts(
+        mut self,
+        path: &str,
+        content: impl AsRef<[u8]>,
+        file_type: Option<FileType>,
+    ) -> Self {
         write_file(&self.root, path, content);
         if let Some(ft) = file_type {
             self.add_with_type(path, ft).expect("Failed to add file");
@@ -114,8 +141,10 @@ impl<'p> ChangelistBuilder<'p> {
 
     pub fn edit_file(self, path: &str, content: impl AsRef<[u8]>) -> Self {
         let full_path = self.root.join(path);
-        let file_type = Self::determine_file_type(&full_path).expect("Failed to determine file type");
-        self.p4.edit(&[full_path.to_string_lossy().as_ref()])
+        let file_type =
+            Self::determine_file_type(&full_path).expect("Failed to determine file type");
+        self.p4
+            .edit(&[full_path.to_string_lossy().as_ref()])
             .changelist(self.changelist)
             .file_type(file_type)
             .run()
@@ -124,10 +153,18 @@ impl<'p> ChangelistBuilder<'p> {
         self
     }
 
-    pub fn edit_file_with_opts(self, path: &str, content: impl AsRef<[u8]>, file_type: Option<FileType>) -> Self {
+    pub fn edit_file_with_opts(
+        self,
+        path: &str,
+        content: impl AsRef<[u8]>,
+        file_type: Option<FileType>,
+    ) -> Self {
         let full_path = self.root.join(path);
-        let ft = file_type.unwrap_or_else(|| Self::determine_file_type(&full_path).expect("Failed to determine file type"));
-        self.p4.edit(&[full_path.to_string_lossy().as_ref()])
+        let ft = file_type.unwrap_or_else(|| {
+            Self::determine_file_type(&full_path).expect("Failed to determine file type")
+        });
+        self.p4
+            .edit(&[full_path.to_string_lossy().as_ref()])
             .changelist(self.changelist)
             .file_type(ft)
             .run()
@@ -146,9 +183,16 @@ impl<'p> ChangelistBuilder<'p> {
         self
     }
 
-    pub fn move_file_with_opts(mut self, from: &str, to: &str, content: Option<&[u8]>, file_type: Option<FileType>) -> Self {
+    pub fn move_file_with_opts(
+        mut self,
+        from: &str,
+        to: &str,
+        content: Option<&[u8]>,
+        file_type: Option<FileType>,
+    ) -> Self {
         if let Some(ft) = file_type {
-            self.move_file_with_type(from, to, ft).expect("Failed to move file");
+            self.move_file_with_type(from, to, ft)
+                .expect("Failed to move file");
         } else {
             self.move_file(from, to).expect("Failed to move file");
         }
@@ -177,7 +221,10 @@ impl P4Server {
                 .parse()
                 .expect("P4RS_TEST_PORT must be a valid port number");
             log::info!("Using external P4 server on port {}", port);
-            return Self { port, container: None };
+            return Self {
+                port,
+                container: None,
+            };
         }
 
         let image = std::env::var("P4RS_TEST_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string());
@@ -187,11 +234,16 @@ impl P4Server {
             .start()
             .expect("Failed to start P4 server");
 
-        let port = container.get_host_port_ipv4(1666).expect("Failed to get container port");
+        let port = container
+            .get_host_port_ipv4(1666)
+            .expect("Failed to get container port");
         Self::wait_for_p4_ready(port);
         Self::setup_protections(port);
         *CONTAINER_ID.lock().unwrap() = Some(container.id().to_string());
-        Self { port, container: Some(container) }
+        Self {
+            port,
+            container: Some(container),
+        }
     }
 }
 
@@ -199,7 +251,9 @@ impl P4Server {
 extern "C" fn cleanup_container() {
     if let Some(id) = CONTAINER_ID.lock().ok().and_then(|mut g| g.take()) {
         log::info!("Cleaning up P4 test container {}", id);
-        let _ = std::process::Command::new("docker").args(["rm", "-f", &id]).output();
+        let _ = std::process::Command::new("docker")
+            .args(["rm", "-f", &id])
+            .output();
     }
 }
 
@@ -224,8 +278,8 @@ pub struct P4Server {
 #[cfg(feature = "testkit-local")]
 impl P4Server {
     fn find_available_port() -> u16 {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .expect("Failed to bind to ephemeral port");
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("Failed to bind to ephemeral port");
         listener.local_addr().unwrap().port()
     }
 
@@ -235,7 +289,11 @@ impl P4Server {
                 .parse()
                 .expect("P4RS_TEST_PORT must be a valid port number");
             log::info!("Using external P4 server on port {}", port);
-            return Self { port, child: None, p4_root: None };
+            return Self {
+                port,
+                child: None,
+                p4_root: None,
+            };
         }
 
         let p4_root = TempDir::new().expect("Failed to create temp dir for p4d root");
@@ -257,7 +315,11 @@ impl P4Server {
 
         Self::wait_for_p4_ready(port);
         Self::setup_protections(port);
-        Self { port, child: Some(child), p4_root: Some(p4_root) }
+        Self {
+            port,
+            child: Some(child),
+            p4_root: Some(p4_root),
+        }
     }
 }
 
@@ -276,7 +338,9 @@ impl Drop for P4Server {
 extern "C" fn cleanup_p4d() {
     if let Some(pid) = P4D_PID.lock().ok().and_then(|mut g| g.take()) {
         log::info!("Cleaning up local p4d process {}", pid);
-        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
     }
 }
 

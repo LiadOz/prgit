@@ -75,10 +75,7 @@ fn setup_security() {
         let (out, err, ok) = p4_cmd(&["-u", "admin", "configure", "set", "security=1"]);
         log::info!("configure set security=1: ok={ok} out={out} err={err}");
 
-        let (out, err, ok) = p4_cmd_stdin(
-            &["-u", "admin", "passwd"],
-            b"admin123\nadmin123\n",
-        );
+        let (out, err, ok) = p4_cmd_stdin(&["-u", "admin", "passwd"], b"admin123\nadmin123\n");
         log::info!("admin passwd: ok={ok} out={out} err={err}");
 
         let ticket = get_ticket("admin", "admin123");
@@ -163,7 +160,9 @@ impl TestServer {
     }
 
     fn app(&self) -> axum::Router {
-        prgit::window::build_app(&self.config).expect("Failed to build app").0
+        prgit::window::build_app(&self.config)
+            .expect("Failed to build app")
+            .0
     }
 
     fn repo_url_prefix(&self) -> String {
@@ -174,10 +173,7 @@ impl TestServer {
     }
 
     fn basic_auth_header(user: &str, pass: &str) -> String {
-        format!(
-            "Basic {}",
-            BASE64_STANDARD.encode(format!("{user}:{pass}"))
-        )
+        format!("Basic {}", BASE64_STANDARD.encode(format!("{user}:{pass}")))
     }
 }
 
@@ -650,7 +646,10 @@ async fn test_push_emits_events_queryable_via_api() {
             Request::builder()
                 .method("POST")
                 .uri(&uri)
-                .header("authorization", TestServer::basic_auth_header(&user, &ticket))
+                .header(
+                    "authorization",
+                    TestServer::basic_auth_header(&user, &ticket),
+                )
                 .header("content-type", "application/x-git-receive-pack-request")
                 .body(Body::from(pkt_line))
                 .expect("request"),
@@ -673,11 +672,14 @@ async fn test_push_emits_events_queryable_via_api() {
         .await
         .expect("response");
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
     let arr = events.as_array().expect("array");
     assert!(
-        arr.iter().any(|e| e["user"] == user && e["event_type"] == "push.received"),
+        arr.iter()
+            .any(|e| e["user"] == user && e["event_type"] == "push.received"),
         "Expected push.received event for user {user}, got: {events}"
     );
 
@@ -692,11 +694,14 @@ async fn test_push_emits_events_queryable_via_api() {
         )
         .await
         .expect("response");
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
     let arr = events.as_array().expect("array");
     assert!(
-        arr.iter().any(|e| e["branch"] == "obs-test" && e["event_type"] == "push.branch_created"),
+        arr.iter()
+            .any(|e| e["branch"] == "obs-test" && e["event_type"] == "push.branch_created"),
         "Expected push.branch_created for obs-test, got: {events}"
     );
 }
@@ -738,7 +743,9 @@ async fn test_events_api_filtering() {
         )
         .await
         .expect("response");
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
     let arr = events.as_array().expect("array");
     assert_eq!(arr.len(), 2, "Expected 2 push.received events");
@@ -754,7 +761,9 @@ async fn test_events_api_filtering() {
         )
         .await
         .expect("response");
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
     let arr = events.as_array().expect("array");
     assert_eq!(arr.len(), 2, "Expected 2 events for depot/main");
@@ -770,7 +779,9 @@ async fn test_events_api_filtering() {
         )
         .await
         .expect("response");
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
     let arr = events.as_array().expect("array");
     assert_eq!(arr.len(), 1, "Expected 1 event for alice");
@@ -786,7 +797,9 @@ async fn test_events_api_filtering() {
         )
         .await
         .expect("response");
-    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
     let counts: serde_json::Value = serde_json::from_slice(&body).expect("json");
     assert_eq!(counts["push.received"], 2);
     assert_eq!(counts["shelve.completed"], 1);

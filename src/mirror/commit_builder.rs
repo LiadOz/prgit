@@ -102,13 +102,23 @@ impl<'r> CommitBuilder<'r> {
         )?;
 
         let note_content = Self::format_note(metadata);
-        self.repo.note(&signature, &signature, Some("refs/notes/p4"), oid, &note_content, false)?;
+        self.repo.note(
+            &signature,
+            &signature,
+            Some("refs/notes/p4"),
+            oid,
+            &note_content,
+            false,
+        )?;
 
         Ok(oid)
     }
 
     fn format_note(metadata: &CommitMetadata) -> String {
-        let mut note = format!("P4-Change: {}\nP4-Client: {}", metadata.change, metadata.client);
+        let mut note = format!(
+            "P4-Change: {}\nP4-Client: {}",
+            metadata.change, metadata.client
+        );
         if let Some(old) = metadata.old_change {
             note.push_str(&format!("\nP4-OldChange: {}", old));
         }
@@ -174,7 +184,13 @@ mod tests {
         let mut builder = CommitBuilder::from_head(&repo).unwrap();
         builder.remove("existing.txt");
         let oid = builder
-            .commit("test", "test@test.com", Utc::now(), "delete", &dummy_metadata())
+            .commit(
+                "test",
+                "test@test.com",
+                Utc::now(),
+                "delete",
+                &dummy_metadata(),
+            )
             .unwrap();
 
         let commit = repo.find_commit(oid).unwrap();
@@ -192,9 +208,18 @@ mod tests {
 
         let mut builder = CommitBuilder::from_head(&repo).unwrap();
         builder.remove("no_such_file.txt");
-        let result = builder.commit("test", "test@test.com", Utc::now(), "noop delete", &dummy_metadata());
+        let result = builder.commit(
+            "test",
+            "test@test.com",
+            Utc::now(),
+            "noop delete",
+            &dummy_metadata(),
+        );
 
-        assert!(result.is_ok(), "Removing non-existent file should not error");
+        assert!(
+            result.is_ok(),
+            "Removing non-existent file should not error"
+        );
     }
 
     #[test]
@@ -206,13 +231,25 @@ mod tests {
         let mut builder = CommitBuilder::from_head(&repo).unwrap();
         builder.remove("existing.txt");
         builder
-            .commit("test", "test@test.com", Utc::now(), "delete", &dummy_metadata())
+            .commit(
+                "test",
+                "test@test.com",
+                Utc::now(),
+                "delete",
+                &dummy_metadata(),
+            )
             .unwrap();
 
         // Second commit: remove the same file again (already gone)
         let mut builder2 = CommitBuilder::from_head(&repo).unwrap();
         builder2.remove("existing.txt");
-        let result = builder2.commit("test", "test@test.com", Utc::now(), "double delete", &dummy_metadata());
+        let result = builder2.commit(
+            "test",
+            "test@test.com",
+            Utc::now(),
+            "double delete",
+            &dummy_metadata(),
+        );
 
         assert!(result.is_ok(), "Double-remove should not error");
     }

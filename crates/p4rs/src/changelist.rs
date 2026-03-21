@@ -8,10 +8,22 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) enum PendingOp {
-    Add { path: String, file_type: FileType },
-    Edit { path: String, file_type: FileType },
-    Delete { path: String },
-    Move { from: String, to: String, file_type: Option<FileType> },
+    Add {
+        path: String,
+        file_type: FileType,
+    },
+    Edit {
+        path: String,
+        file_type: FileType,
+    },
+    Delete {
+        path: String,
+    },
+    Move {
+        from: String,
+        to: String,
+        file_type: Option<FileType>,
+    },
 }
 
 pub struct ChangelistBuilder<'p> {
@@ -54,7 +66,11 @@ impl<'p> ChangelistBuilder<'p> {
     pub fn determine_file_type(path: &Path) -> Result<FileType, P4Error> {
         use std::os::unix::fs::PermissionsExt;
         let meta = path.symlink_metadata().map_err(|e| {
-            P4Error::UnexpectedError(format!("Cannot detect file type for {}: {}", path.display(), e))
+            P4Error::UnexpectedError(format!(
+                "Cannot detect file type for {}: {}",
+                path.display(),
+                e
+            ))
         })?;
         if meta.file_type().is_symlink() {
             Ok(FileType::symlink())
@@ -75,7 +91,8 @@ impl<'p> ChangelistBuilder<'p> {
         let full_path = self.resolve_path(path);
         let path_str = full_path.to_string_lossy();
         if self.immediate {
-            self.p4.add(&[path_str.as_ref()])
+            self.p4
+                .add(&[path_str.as_ref()])
                 .changelist(self.changelist)
                 .file_type(file_type)
                 .run()?;
@@ -94,11 +111,16 @@ impl<'p> ChangelistBuilder<'p> {
         self.edit_with_type(path, file_type)
     }
 
-    pub fn edit_with_type(&mut self, path: &str, file_type: FileType) -> Result<&mut Self, P4Error> {
+    pub fn edit_with_type(
+        &mut self,
+        path: &str,
+        file_type: FileType,
+    ) -> Result<&mut Self, P4Error> {
         let full_path = self.resolve_path(path);
         let path_str = full_path.to_string_lossy();
         if self.immediate {
-            self.p4.edit(&[path_str.as_ref()])
+            self.p4
+                .edit(&[path_str.as_ref()])
                 .changelist(self.changelist)
                 .file_type(file_type)
                 .run()?;
@@ -115,7 +137,8 @@ impl<'p> ChangelistBuilder<'p> {
         let full_path = self.resolve_path(path);
         let path_str = full_path.to_string_lossy();
         if self.immediate {
-            self.p4.delete(&[path_str.as_ref()])
+            self.p4
+                .delete(&[path_str.as_ref()])
                 .changelist(self.changelist)
                 .run()?;
         } else {
@@ -132,16 +155,23 @@ impl<'p> ChangelistBuilder<'p> {
         self.move_file_with_type(from, to, file_type)
     }
 
-    pub fn move_file_with_type(&mut self, from: &str, to: &str, file_type: FileType) -> Result<&mut Self, P4Error> {
+    pub fn move_file_with_type(
+        &mut self,
+        from: &str,
+        to: &str,
+        file_type: FileType,
+    ) -> Result<&mut Self, P4Error> {
         let from_path = self.resolve_path(from);
         let to_path = self.resolve_path(to);
         let from_str = from_path.to_string_lossy();
         let to_str = to_path.to_string_lossy();
         if self.immediate {
-            self.p4.edit(&[from_str.as_ref()])
+            self.p4
+                .edit(&[from_str.as_ref()])
                 .changelist(self.changelist)
                 .run()?;
-            self.p4.move_file(from_str.as_ref(), to_str.as_ref())
+            self.p4
+                .move_file(from_str.as_ref(), to_str.as_ref())
                 .changelist(self.changelist)
                 .file_type(file_type)
                 .run()?;
@@ -176,7 +206,11 @@ impl<'p> ChangelistBuilder<'p> {
                 PendingOp::Delete { path } => {
                     deletes.push(path);
                 }
-                PendingOp::Move { from, to, file_type } => {
+                PendingOp::Move {
+                    from,
+                    to,
+                    file_type,
+                } => {
                     moves.push((from, to, file_type));
                 }
             }
@@ -184,7 +218,11 @@ impl<'p> ChangelistBuilder<'p> {
 
         for (ft, paths) in &edits {
             let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-            self.p4.edit(&refs).changelist(self.changelist).file_type(ft.clone()).run()?;
+            self.p4
+                .edit(&refs)
+                .changelist(self.changelist)
+                .file_type(ft.clone())
+                .run()?;
         }
 
         for (from, to, file_type) in moves {
@@ -200,7 +238,11 @@ impl<'p> ChangelistBuilder<'p> {
 
         for (ft, paths) in &adds {
             let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-            self.p4.add(&refs).changelist(self.changelist).file_type(ft.clone()).run()?;
+            self.p4
+                .add(&refs)
+                .changelist(self.changelist)
+                .file_type(ft.clone())
+                .run()?;
         }
 
         if !deletes.is_empty() {

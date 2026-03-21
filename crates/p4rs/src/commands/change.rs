@@ -116,7 +116,11 @@ impl<'p> P4Command for ChangeCommand<'p, DeleteChange> {
         let response: GenericResponse = serde_json::from_value(json)?;
         let deleted_re = regex::Regex::new(r"^Change \d+ deleted\.$").expect("invalid regex");
         if !deleted_re.is_match(response.data.trim()) {
-            return Err(P4Error::command(vec![crate::P4Message::new(3, 0, response.data)]));
+            return Err(P4Error::command(vec![crate::P4Message::new(
+                3,
+                0,
+                response.data,
+            )]));
         }
         Ok(P4Output::new(vec![response], vec![]))
     }

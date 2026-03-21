@@ -83,7 +83,8 @@ impl<M: MirrorData> Mirror<M> {
                 change.change, change.user, change.client, file_count, change.desc, e
             ))
         })?;
-        self.mirror_data.map_commit_to_change(&commit_hash, change.change);
+        self.mirror_data
+            .map_commit_to_change(&commit_hash, change.change);
         self.mirror_data.set_last_sync_change(change.change);
 
         let (merge_parent, merge_strategy) = match &related_branch {
@@ -103,7 +104,9 @@ impl<M: MirrorData> Mirror<M> {
     }
 
     fn fetch_change_context(&mut self, change: &ChangeData) -> Result<ChangeContext, MirrorError> {
-        let email = self.resolve_user_email(&change.user).unwrap_or("unknown".to_string());
+        let email = self
+            .resolve_user_email(&change.user)
+            .unwrap_or("unknown".to_string());
         let temp_dir = tempfile::tempdir().map_err(|e| {
             MirrorError::MirrorFailed(format!("Failed to create temporary directory: {}", e))
         })?;
@@ -145,7 +148,11 @@ impl<M: MirrorData> Mirror<M> {
         Ok(user_info.email)
     }
 
-    fn create_commit(&self, change: &ChangeData, ctx: &ChangeContext) -> Result<String, MirrorError> {
+    fn create_commit(
+        &self,
+        change: &ChangeData,
+        ctx: &ChangeContext,
+    ) -> Result<String, MirrorError> {
         let mut builder = CommitBuilder::from_head(&self.repo)?;
         if let Some(branch) = self
             .mirror_data
@@ -178,7 +185,11 @@ impl<M: MirrorData> Mirror<M> {
             let mode = Self::file_mode(&file.file_type);
 
             match file.action {
-                FileAction::Add | FileAction::Edit | FileAction::MoveAdd | FileAction::Branch | FileAction::Integrate => {
+                FileAction::Add
+                | FileAction::Edit
+                | FileAction::MoveAdd
+                | FileAction::Branch
+                | FileAction::Integrate => {
                     builder.upsert(path_in_repo, &path_in_temp, mode)?;
                 }
                 FileAction::Delete | FileAction::MoveDelete => {
@@ -192,7 +203,13 @@ impl<M: MirrorData> Mirror<M> {
             old_change: change.old_change,
             client: change.client.clone(),
         };
-        let commit_hash = builder.commit(&change.user, &ctx.email, change.time, &change.desc, &metadata)?;
+        let commit_hash = builder.commit(
+            &change.user,
+            &ctx.email,
+            change.time,
+            &change.desc,
+            &metadata,
+        )?;
         log::debug!("Committed change {change:?} with hash {commit_hash}");
         Ok(commit_hash.to_string())
     }

@@ -30,23 +30,39 @@ pub(crate) struct ActiveShelves {
 
 impl ActiveShelves {
     pub fn set_queued(&self, key: &str) {
-        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Queued);
+        self.inner
+            .lock()
+            .expect("shelve state lock poisoned")
+            .insert(key.to_string(), ShelveState::Queued);
     }
 
     pub fn set_shelving(&self, key: &str) {
-        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Shelving);
+        self.inner
+            .lock()
+            .expect("shelve state lock poisoned")
+            .insert(key.to_string(), ShelveState::Shelving);
     }
 
     pub fn set_done(&self, key: &str, changelist: usize, client: String) {
-        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Done { changelist, client });
+        self.inner
+            .lock()
+            .expect("shelve state lock poisoned")
+            .insert(key.to_string(), ShelveState::Done { changelist, client });
     }
 
     pub fn set_failed(&self, key: &str, error: String) {
-        self.inner.lock().unwrap().insert(key.to_string(), ShelveState::Failed { error });
+        self.inner
+            .lock()
+            .expect("shelve state lock poisoned")
+            .insert(key.to_string(), ShelveState::Failed { error });
     }
 
     pub fn get(&self, key: &str) -> Option<ShelveState> {
-        self.inner.lock().unwrap().get(key).cloned()
+        self.inner
+            .lock()
+            .expect("shelve state lock poisoned")
+            .get(key)
+            .cloned()
     }
 }
 
@@ -111,8 +127,12 @@ impl Default for ObservabilityConfig {
 }
 
 impl ObservabilityConfig {
-    fn default_channel_capacity() -> usize { 4096 }
-    fn default_retention_days() -> u32 { 30 }
+    fn default_channel_capacity() -> usize {
+        4096
+    }
+    fn default_retention_days() -> u32 {
+        30
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -136,7 +156,7 @@ pub struct RepoConfig {
 
 impl RepoConfig {
     pub fn shelve_async(&self) -> bool {
-        self.shelve.as_ref().map_or(false, |s| s.r#async)
+        self.shelve.as_ref().is_some_and(|s| s.r#async)
     }
 
     fn url_path(&self) -> String {
@@ -190,18 +210,22 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
         let bare_path = repo_config.bare_repo_path(&config.data_dir);
 
         let repo = if bare_path.exists() {
-            let repo = Repository::open_bare(&bare_path)
-                .map_err(WindowError::git(format!("Failed to open repo at {}", bare_path.display())))?;
+            let repo = Repository::open_bare(&bare_path).map_err(WindowError::git(format!(
+                "Failed to open repo at {}",
+                bare_path.display()
+            )))?;
             log::info!("Opened existing repo: {}", bare_path.display());
             repo
         } else {
-            let parent = bare_path
-                .parent()
-                .ok_or_else(|| WindowError::Other(format!("Invalid bare repo path: {}", bare_path.display())))?;
+            let parent = bare_path.parent().ok_or_else(|| {
+                WindowError::Other(format!("Invalid bare repo path: {}", bare_path.display()))
+            })?;
             std::fs::create_dir_all(parent)
                 .map_err(WindowError::io("Failed to create repo directory"))?;
-            let repo = Repository::init_bare(&bare_path)
-                .map_err(WindowError::git(format!("Failed to init bare repo at {}", bare_path.display())))?;
+            let repo = Repository::init_bare(&bare_path).map_err(WindowError::git(format!(
+                "Failed to init bare repo at {}",
+                bare_path.display()
+            )))?;
             repo.config()
                 .map_err(WindowError::git("Failed to open repo config"))?
                 .set_bool("http.receivepack", true)
@@ -225,12 +249,8 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
                 client.client_id
             }
             None => {
-                let id = db.create_prgit_client(
-                    &repo_config.p4client,
-                    "p4",
-                    &repo_config.p4port,
-                    "",
-                )?;
+                let id =
+                    db.create_prgit_client(&repo_config.p4client, "p4", &repo_config.p4port, "")?;
                 db.create_prgit_repo(
                     id,
                     to_str(&bare_path)?,
@@ -261,8 +281,10 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
 pub fn build_app(config: &ServerConfig) -> Result<(Router, observability::EventEmitter)> {
     let git_http_backend = find_git_http_backend()?;
 
-    std::fs::create_dir_all(&config.data_dir)
-        .map_err(WindowError::io(format!("Failed to create data_dir {}", config.data_dir.display())))?;
+    std::fs::create_dir_all(&config.data_dir).map_err(WindowError::io(format!(
+        "Failed to create data_dir {}",
+        config.data_dir.display()
+    )))?;
 
     let db_path = config.data_dir.join("prgit.db");
     let db_path_str = to_str(&db_path)?;
@@ -272,7 +294,11 @@ pub fn build_app(config: &ServerConfig) -> Result<(Router, observability::EventE
 
     let (tx, rx) = tokio::sync::mpsc::channel(config.observability.channel_capacity);
     let emitter = observability::EventEmitter::new(tx);
-    observability::spawn_collector(rx, db_path_str.to_string(), config.observability.retention_days);
+    observability::spawn_collector(
+        rx,
+        db_path_str.to_string(),
+        config.observability.retention_days,
+    );
 
     let emitter_clone = emitter.clone();
     let state = Arc::new(AppState {
@@ -288,8 +314,14 @@ pub fn build_app(config: &ServerConfig) -> Result<(Router, observability::EventE
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/events/counts", get(handlers::query_event_counts))
         .route("/api/v1/events/users", get(handlers::query_active_users))
-        .route("/api/v1/repos/{group}/{name}/shelve/status/{branch}", get(handlers::shelve_status))
-        .route("/api/v1/repos/{group}/{name}/shelve/cl-alias", post(handlers::create_cl_alias))
+        .route(
+            "/api/v1/repos/{group}/{name}/shelve/status/{branch}",
+            get(handlers::shelve_status),
+        )
+        .route(
+            "/api/v1/repos/{group}/{name}/shelve/cl-alias",
+            post(handlers::create_cl_alias),
+        )
         .fallback(handlers::handle_git_request)
         .with_state(state);
 
@@ -389,10 +421,16 @@ repos:
 
         // queued → shelving → done
         tracker.set_queued("depot/main/feature");
-        assert!(matches!(tracker.get("depot/main/feature"), Some(ShelveState::Queued)));
+        assert!(matches!(
+            tracker.get("depot/main/feature"),
+            Some(ShelveState::Queued)
+        ));
 
         tracker.set_shelving("depot/main/feature");
-        assert!(matches!(tracker.get("depot/main/feature"), Some(ShelveState::Shelving)));
+        assert!(matches!(
+            tracker.get("depot/main/feature"),
+            Some(ShelveState::Shelving)
+        ));
 
         tracker.set_done("depot/main/feature", 12345, "client-1".to_string());
         match tracker.get("depot/main/feature") {

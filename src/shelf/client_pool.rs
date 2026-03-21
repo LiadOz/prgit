@@ -2,7 +2,7 @@ use std::fs::{self, File};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
-use p4rs::{ClientMapping, ClientSpec, P4, P4Command, P4Error};
+use p4rs::{ClientMapping, ClientSpec, P4Command, P4Error, P4};
 use thiserror::Error;
 
 use crate::cabinet::{PrgitClient, TicketStoreError};
@@ -32,7 +32,13 @@ pub fn get_shelve_client(
     let lock_file = acquire_lock(&client_root)?;
 
     let p4 = user_p4.clone().client_name(&client_name);
-    ensure_p4_client_exists(&p4, &prgit_client.p4(), base_client, &client_name, &client_root)?;
+    ensure_p4_client_exists(
+        &p4,
+        &prgit_client.p4(),
+        base_client,
+        &client_name,
+        &client_root,
+    )?;
 
     let shelve_client = ShelveClient::new(p4, &client_name, client_root)?;
 
@@ -105,11 +111,11 @@ pub enum ShelveClientError {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use super::*;
     use crate::cabinet::Database;
     use crate::mirror::IntegrateStrategy;
     use p4rs::testkit::SERVER;
+    use std::path::PathBuf;
 
     fn setup_test_env() -> (p4rs::testkit::TestClient, Database, PathBuf) {
         let client = SERVER.test_client();
@@ -122,7 +128,7 @@ mod tests {
     fn setup_prgit_client<'a>(
         test_client: &p4rs::testkit::TestClient,
         db: &'a Database,
-        clients_root: &PathBuf,
+        clients_root: &Path,
     ) -> PrgitClient<'a> {
         let client_id = db
             .create_prgit_client(
@@ -140,11 +146,8 @@ mod tests {
             None,
         )
         .unwrap();
-        db.create_shelve_config(
-            client_id,
-            clients_root.to_str().unwrap(),
-        )
-        .unwrap();
+        db.create_shelve_config(client_id, clients_root.to_str().unwrap())
+            .unwrap();
         db.client(client_id).unwrap().unwrap()
     }
 
@@ -154,7 +157,19 @@ mod tests {
         let prgit_client = setup_prgit_client(&test_client, &db, &clients_root);
 
         let handle = get_shelve_client(&prgit_client, &test_client.p4).unwrap();
-        let expected_name = format!("{}-{}-shelve", test_client.client_name, test_client.p4.info().short().run().unwrap().single().unwrap().user_name);
+        let expected_name = format!(
+            "{}-{}-shelve",
+            test_client.client_name,
+            test_client
+                .p4
+                .info()
+                .short()
+                .run()
+                .unwrap()
+                .single()
+                .unwrap()
+                .user_name
+        );
         let client_root = clients_root.join(&expected_name);
         assert!(client_root.exists());
         drop(handle);
@@ -203,8 +218,14 @@ mod tests {
         let client_id = db
             .create_prgit_client("test", "p4", "localhost:1666", "user")
             .unwrap();
-        db.create_prgit_repo(client_id, "/repo", "master", IntegrateStrategy::MergeOurs, None)
-            .unwrap();
+        db.create_prgit_repo(
+            client_id,
+            "/repo",
+            "master",
+            IntegrateStrategy::MergeOurs,
+            None,
+        )
+        .unwrap();
         let prgit_client = db.client(client_id).unwrap().unwrap();
 
         let p4 = P4::new().port("localhost:1666").p4_user("user");

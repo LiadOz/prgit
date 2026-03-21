@@ -5,9 +5,7 @@ use rusqlite::Connection;
 use crate::mirror::IntegrateStrategy;
 
 use super::prgit_client::PrgitClient;
-use super::tables::{
-    PrgitClientInfo, PrgitRepo, ShelveConfig, Table, TicketMetadata, UserMapping,
-};
+use super::tables::{PrgitClientInfo, PrgitRepo, ShelveConfig, Table, TicketMetadata, UserMapping};
 
 pub struct Database {
     conn: Connection,
@@ -30,7 +28,7 @@ impl Database {
                 change INTEGER NOT NULL,
                 commit_hash TEXT NOT NULL,
                 PRIMARY KEY (prgit_client_id, change)
-            );"
+            );",
         )?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS branch_shelve_mapping (
@@ -39,7 +37,7 @@ impl Database {
                 shelved_change INTEGER NOT NULL,
                 shelver_user TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (prgit_client_id, branch)
-            );"
+            );",
         )?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS shelve_cl_alias (
@@ -48,7 +46,7 @@ impl Database {
                 shelved_change INTEGER NOT NULL,
                 PRIMARY KEY (prgit_client_id, alias_cl),
                 UNIQUE (prgit_client_id, shelved_change)
-            );"
+            );",
         )?;
         conn.execute_batch(TicketMetadata::SCHEMA)?;
         conn.execute_batch(
@@ -61,12 +59,15 @@ impl Database {
                 payload TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events (event_type, timestamp);
-            CREATE INDEX IF NOT EXISTS idx_events_repo_ts ON events (repo, timestamp);"
+            CREATE INDEX IF NOT EXISTS idx_events_repo_ts ON events (repo, timestamp);",
         )?;
         Ok(Self { conn })
     }
 
-    pub fn get_prgit_client_info(&self, id: u64) -> Result<Option<PrgitClientInfo>, rusqlite::Error> {
+    pub fn get_prgit_client_info(
+        &self,
+        id: u64,
+    ) -> Result<Option<PrgitClientInfo>, rusqlite::Error> {
         self.conn
             .query_row(
                 "SELECT id, client_name, p4_path, p4port, p4user FROM prgit_clients WHERE id = ?1",
@@ -307,7 +308,10 @@ mod tests {
         db.create_prgit_client("my-client", "p4", "server:1666", "user")
             .unwrap();
 
-        let client = db.get_prgit_client_info_by_name("my-client").unwrap().unwrap();
+        let client = db
+            .get_prgit_client_info_by_name("my-client")
+            .unwrap()
+            .unwrap();
         assert_eq!(client.client_name, "my-client");
 
         let missing = db.get_prgit_client_info_by_name("nonexistent").unwrap();
@@ -331,9 +335,17 @@ mod tests {
     #[test]
     fn create_and_get_prgit_repo() {
         let db = test_db();
-        let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_prgit_repo(client_id, "/path/to/repo", "master", IntegrateStrategy::MergeOurs, Some(100))
+        let client_id = db
+            .create_prgit_client("client", "p4", "port", "user")
             .unwrap();
+        db.create_prgit_repo(
+            client_id,
+            "/path/to/repo",
+            "master",
+            IntegrateStrategy::MergeOurs,
+            Some(100),
+        )
+        .unwrap();
 
         let repo = db.get_prgit_repo(client_id).unwrap().unwrap();
         assert_eq!(repo.prgit_client_id, client_id);
@@ -352,7 +364,9 @@ mod tests {
     #[test]
     fn create_and_get_shelve_config() {
         let db = test_db();
-        let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
+        let client_id = db
+            .create_prgit_client("client", "p4", "port", "user")
+            .unwrap();
         db.create_shelve_config(client_id, "/shelve/clients")
             .unwrap();
 
@@ -371,8 +385,12 @@ mod tests {
     #[test]
     fn create_multiple_clients() {
         let db = test_db();
-        let id1 = db.create_prgit_client("client1", "p4", "port1", "user1").unwrap();
-        let id2 = db.create_prgit_client("client2", "p4", "port2", "user2").unwrap();
+        let id1 = db
+            .create_prgit_client("client1", "p4", "port1", "user1")
+            .unwrap();
+        let id2 = db
+            .create_prgit_client("client2", "p4", "port2", "user2")
+            .unwrap();
         assert_ne!(id1, id2);
 
         let c1 = db.get_prgit_client_info(id1).unwrap().unwrap();
@@ -382,20 +400,19 @@ mod tests {
     }
 
     #[test]
-    //fn add_multiple_client_views() {
-    //    let db = test_db();
-    //    let id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-    //    db.add_client_views(id, &[
-    //        ("//depot/main/...", "//client/main/..."),
-    //        ("//depot/dev/...", "//client/dev/..."),
-    //    ]).unwrap();
-    //}
-
-    #[test]
     fn create_repo_without_max_changes() {
         let db = test_db();
-        let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
-        db.create_prgit_repo(client_id, "/repo", "master", IntegrateStrategy::MergeOurs, None).unwrap();
+        let client_id = db
+            .create_prgit_client("client", "p4", "port", "user")
+            .unwrap();
+        db.create_prgit_repo(
+            client_id,
+            "/repo",
+            "master",
+            IntegrateStrategy::MergeOurs,
+            None,
+        )
+        .unwrap();
 
         let repo = db.get_prgit_repo(client_id).unwrap().unwrap();
         assert_eq!(repo.max_changes_query, None);
@@ -404,7 +421,9 @@ mod tests {
     #[test]
     fn shelve_config_clients_root_preserved() {
         let db = test_db();
-        let client_id = db.create_prgit_client("client", "p4", "port", "user").unwrap();
+        let client_id = db
+            .create_prgit_client("client", "p4", "port", "user")
+            .unwrap();
         db.create_shelve_config(client_id, "/my/clients").unwrap();
 
         let config = db.get_shelve_config(client_id).unwrap().unwrap();

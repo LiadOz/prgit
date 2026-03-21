@@ -157,10 +157,7 @@ impl<'a, B: SecretBackend> TicketStore<'a, B> {
         }
 
         let ticket = self.get_ticket(p4port, p4user)?;
-        Ok(P4::new()
-            .port(p4port)
-            .p4_user(p4user)
-            .password(ticket))
+        Ok(P4::new().port(p4port).p4_user(p4user).password(ticket))
     }
 }
 
@@ -193,15 +190,12 @@ mod tests {
         }
 
         fn get_secret(&self, key: &str) -> Result<String, TicketStoreError> {
-            self.store
-                .lock()
-                .unwrap()
-                .get(key)
-                .cloned()
-                .ok_or_else(|| TicketStoreError::NoTicketStored {
+            self.store.lock().unwrap().get(key).cloned().ok_or_else(|| {
+                TicketStoreError::NoTicketStored {
                     p4port: String::new(),
                     p4user: key.to_string(),
-                })
+                }
+            })
         }
 
         fn delete_secret(&self, key: &str) -> Result<(), TicketStoreError> {
@@ -337,7 +331,10 @@ mod tests {
             .unwrap();
 
         let result = store.authenticated_p4("localhost:1666", "bob");
-        assert!(matches!(result, Err(TicketStoreError::TicketExpired { .. })));
+        assert!(matches!(
+            result,
+            Err(TicketStoreError::TicketExpired { .. })
+        ));
     }
 
     #[test]
@@ -346,7 +343,10 @@ mod tests {
         let store = test_store(&db);
 
         let result = store.authenticated_p4("localhost:1666", "bob");
-        assert!(matches!(result, Err(TicketStoreError::NoTicketStored { .. })));
+        assert!(matches!(
+            result,
+            Err(TicketStoreError::NoTicketStored { .. })
+        ));
     }
 
     #[test]

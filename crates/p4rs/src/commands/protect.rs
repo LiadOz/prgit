@@ -99,22 +99,38 @@ impl Protection {
         }
     }
 
-    pub fn super_user(name: impl Into<String>, host: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn super_user(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self::new(AccessLevel::Super, ProtectionKind::User, name, host, path)
     }
 
-    pub fn write_user(name: impl Into<String>, host: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn write_user(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self::new(AccessLevel::Write, ProtectionKind::User, name, host, path)
     }
 
-    pub fn read_user(name: impl Into<String>, host: impl Into<String>, path: impl Into<String>) -> Self {
+    pub fn read_user(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self::new(AccessLevel::Read, ProtectionKind::User, name, host, path)
     }
 }
 
 impl std::fmt::Display for Protection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {} {} {}", self.access, self.kind, self.name, self.host, self.path)
+        write!(
+            f,
+            "{} {} {} {} {}",
+            self.access, self.kind, self.name, self.host, self.path
+        )
     }
 }
 
@@ -123,7 +139,10 @@ impl std::str::FromStr for Protection {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split_whitespace().collect();
         if parts.len() != 5 {
-            return Err(P4Error::UnexpectedError(format!("invalid protection line: {}", s)));
+            return Err(P4Error::UnexpectedError(format!(
+                "invalid protection line: {}",
+                s
+            )));
         }
         Ok(Self {
             access: parts[0].parse().map_err(P4Error::UnexpectedError)?,
@@ -186,7 +205,10 @@ pub struct ProtectCommand<'p, T> {
 
 impl<'p, T> ProtectCommand<'p, T> {
     pub fn new(p4: &'p P4, command_specific: T) -> Self {
-        Self { p4, command_specific }
+        Self {
+            p4,
+            command_specific,
+        }
     }
 }
 
@@ -204,7 +226,10 @@ impl<'p> P4Command for ProtectCommand<'p, GetProtect> {
         let json = self.p4.run(process)?;
         let raw: ProtectionTableRaw = serde_json::from_value(json)?;
         let protections: Vec<Protection> = extract_numbered(&raw.extra, "Protections");
-        Ok(P4Output::new(vec![ProtectionTable::new(protections)], vec![]))
+        Ok(P4Output::new(
+            vec![ProtectionTable::new(protections)],
+            vec![],
+        ))
     }
 }
 

@@ -21,7 +21,10 @@ impl<T> P4Output<T> {
     }
 
     pub fn empty() -> Self {
-        Self { results: Vec::new(), warnings: Vec::new() }
+        Self {
+            results: Vec::new(),
+            warnings: Vec::new(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -36,15 +39,17 @@ impl<T> P4Output<T> {
         !self.warnings.is_empty()
     }
 
-    #[must_use]
     pub fn single(mut self) -> Result<T, P4Error> {
         if self.results.is_empty() {
-            return Err(P4Error::UnexpectedError("Expected single result, got none".into()));
+            return Err(P4Error::UnexpectedError(
+                "Expected single result, got none".into(),
+            ));
         }
         if self.results.len() > 1 {
-            return Err(P4Error::UnexpectedError(
-                format!("Expected single result, got {}", self.results.len())
-            ));
+            return Err(P4Error::UnexpectedError(format!(
+                "Expected single result, got {}",
+                self.results.len()
+            )));
         }
         Ok(self.results.remove(0))
     }
