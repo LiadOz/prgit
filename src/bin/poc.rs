@@ -232,7 +232,7 @@ fn cmd_serve(
         eprintln!("[serve] Polling P4 for changes since {}...", before);
 
         match mirror.run() {
-            Ok(()) => {
+            Ok(_infos) => {
                 let after = mirror.last_sync_change();
                 if after > before {
                     eprintln!("[serve] Synced changes {}-{}", before + 1, after);

@@ -8,12 +8,9 @@ context: |
   Tech stack: Rust
   We use conventional commits
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - Include an "Observability" section that describes what events or metrics this change should emit. Consider what questions operators or product owners would want to answer about this feature's usage, performance, or health. If the change has no observable surface, state "No new observability needed" with a brief reason.
+    - The existing observability system uses structured events emitted via a bounded async channel to SQLite. Event types are defined in src/window/observability.rs as variants of ObservabilityEvent. New events should follow the existing naming convention (category.action, e.g. shelve.completed, mirror.cycle_failed).
+  design:
+    - If the proposal includes new observability events, the design should specify where in the code they will be emitted and what fields they carry. Events must never block request handling — use the EventEmitter.try_emit() pattern.

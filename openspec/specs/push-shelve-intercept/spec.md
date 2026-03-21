@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Push interception that rejects writes to the synced branch, triggers shelving on feature branch pushes, and provides user feedback via git sideband protocol.
+
+## Requirements
 
 ### Requirement: Reject pushes to synced branch
 The server SHALL reject any push that targets the synced branch before proxying to `git-http-backend`.
@@ -52,8 +55,8 @@ If the shelver fails after a successful push, the push SHALL still succeed. The 
 - **THEN** the git push SHALL return success to the client, and the server SHALL log the shelve error
 
 ### Requirement: Multiple users on same branch (known limitation)
-When multiple users push to the same branch, shelve ownership may conflict because the P4 shelved changelist is owned by the user who first created it. A subsequent user pushing to the same branch may fail to update the existing shelve.
+The server SHALL NOT guarantee successful shelving when multiple users push to the same branch, because the P4 shelved changelist is owned by the user who first created it.
 
 #### Scenario: Second user pushes to branch with existing shelve
 - **WHEN** user B pushes to a branch that was previously shelved by user A
-- **THEN** the shelver MAY fail due to P4 changelist ownership. This is a known limitation to be addressed in a future change.
+- **THEN** the shelver SHALL attempt the shelve but MAY fail due to P4 changelist ownership. This is a known limitation.

@@ -1,9 +1,22 @@
+use std::time::Instant;
+
 use git2::{FileMode, Repository};
 use p4rs::{BaseFileType, ChangeData, FileAction, P4Command, P4Error, P4};
 
 use super::commit_builder::{CommitBuilder, CommitMetadata};
 use super::error::MirrorError;
 use super::mirror_data::{IntegrateStrategy, MirrorData};
+
+/// Info about a single mirrored change, returned to the caller for observability.
+pub struct MirrorChangeInfo {
+    pub p4_change: usize,
+    pub commit_hash: String,
+    pub user: String,
+    pub file_count: usize,
+    pub duration_ms: u64,
+    pub merge_parent: Option<String>,
+    pub merge_strategy: Option<String>,
+}
 
 pub struct Mirror<M: MirrorData> {
     p4: P4,
@@ -20,17 +33,18 @@ impl<M: MirrorData> Mirror<M> {
         }
     }
 
-    pub fn run(&mut self) -> Result<(), MirrorError> {
+    pub fn run(&mut self) -> Result<Vec<MirrorChangeInfo>, MirrorError> {
+        let mut infos = Vec::new();
         loop {
             let changes = self.fetch_changes()?;
             if changes.is_empty() {
                 break;
             }
             for change in changes {
-                self.process_change(change)?;
+                infos.push(self.process_change(change)?);
             }
         }
-        Ok(())
+        Ok(infos)
     }
 
     pub fn last_sync_change(&self) -> usize {
@@ -52,18 +66,40 @@ impl<M: MirrorData> Mirror<M> {
         Ok(cmd.run()?.results)
     }
 
-    fn process_change(&mut self, change: ChangeData) -> Result<(), MirrorError> {
+    fn process_change(&mut self, change: ChangeData) -> Result<MirrorChangeInfo, MirrorError> {
+        let start = Instant::now();
         let ctx = self.fetch_change_context(&change)?;
+        let file_count = ctx.file_data.len();
         log::debug!("Attempting to create commit for change {change:?}");
+
+        // Detect merge parent before creating commit
+        let related_branch = self
+            .mirror_data
+            .get_related_branch(change.old_change.unwrap_or(change.change));
+
         let commit_hash = self.create_commit(&change, &ctx).map_err(|e| {
             MirrorError::MirrorFailed(format!(
                 "Failed to commit change {} (user={}, client={}, files={}, desc={:?}): {}",
-                change.change, change.user, change.client, ctx.file_data.len(), change.desc, e
+                change.change, change.user, change.client, file_count, change.desc, e
             ))
         })?;
         self.mirror_data.map_commit_to_change(&commit_hash, change.change);
         self.mirror_data.set_last_sync_change(change.change);
-        Ok(())
+
+        let (merge_parent, merge_strategy) = match &related_branch {
+            Some(branch) => (Some(branch.clone()), Some("merge_ours".to_string())),
+            None => (None, None),
+        };
+
+        Ok(MirrorChangeInfo {
+            p4_change: change.change,
+            commit_hash,
+            user: change.user,
+            file_count,
+            duration_ms: start.elapsed().as_millis() as u64,
+            merge_parent,
+            merge_strategy,
+        })
     }
 
     fn fetch_change_context(&mut self, change: &ChangeData) -> Result<ChangeContext, MirrorError> {

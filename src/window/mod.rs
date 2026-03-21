@@ -1,5 +1,6 @@
 mod handlers;
 mod mirror_task;
+pub(crate) mod observability;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -88,6 +89,30 @@ pub struct ServerConfig {
     pub listen: String,
     pub data_dir: PathBuf,
     pub repos: Vec<RepoConfig>,
+    #[serde(default)]
+    pub observability: ObservabilityConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ObservabilityConfig {
+    #[serde(default = "ObservabilityConfig::default_channel_capacity")]
+    pub channel_capacity: usize,
+    #[serde(default = "ObservabilityConfig::default_retention_days")]
+    pub retention_days: u32,
+}
+
+impl Default for ObservabilityConfig {
+    fn default() -> Self {
+        Self {
+            channel_capacity: 4096,
+            retention_days: 30,
+        }
+    }
+}
+
+impl ObservabilityConfig {
+    fn default_channel_capacity() -> usize { 4096 }
+    fn default_retention_days() -> u32 { 30 }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -137,6 +162,7 @@ pub(crate) struct AppState {
     pub db_path: String,
     pub git_http_backend: PathBuf,
     pub active_shelves: ActiveShelves,
+    pub emitter: observability::EventEmitter,
 }
 
 fn to_str(path: &std::path::Path) -> Result<&str> {
@@ -232,7 +258,7 @@ fn init_repos(config: &ServerConfig, db: &Database) -> Result<HashMap<String, Re
     Ok(repos)
 }
 
-pub fn build_app(config: &ServerConfig) -> Result<Router> {
+pub fn build_app(config: &ServerConfig) -> Result<(Router, observability::EventEmitter)> {
     let git_http_backend = find_git_http_backend()?;
 
     std::fs::create_dir_all(&config.data_dir)
@@ -243,23 +269,35 @@ pub fn build_app(config: &ServerConfig) -> Result<Router> {
     let db = Database::open(db_path_str)?;
 
     let repos = init_repos(config, &db)?;
+
+    let (tx, rx) = tokio::sync::mpsc::channel(config.observability.channel_capacity);
+    let emitter = observability::EventEmitter::new(tx);
+    observability::spawn_collector(rx, db_path_str.to_string(), config.observability.retention_days);
+
+    let emitter_clone = emitter.clone();
     let state = Arc::new(AppState {
         repos,
         db_path: db_path_str.to_string(),
         git_http_backend,
         active_shelves: ActiveShelves::default(),
+        emitter,
     });
 
-    Ok(Router::new()
+    let router = Router::new()
         .route("/api/health", get(handlers::health))
+        .route("/api/v1/events", get(handlers::query_events))
+        .route("/api/v1/events/counts", get(handlers::query_event_counts))
+        .route("/api/v1/events/users", get(handlers::query_active_users))
         .route("/api/v1/repos/{group}/{name}/shelve/status/{branch}", get(handlers::shelve_status))
         .route("/api/v1/repos/{group}/{name}/shelve/cl-alias", post(handlers::create_cl_alias))
         .fallback(handlers::handle_git_request)
-        .with_state(state))
+        .with_state(state);
+
+    Ok((router, emitter_clone))
 }
 
-pub fn spawn_mirror_tasks(config: &ServerConfig) {
-    mirror_task::spawn_all(config);
+pub fn spawn_mirror_tasks(config: &ServerConfig, emitter: &observability::EventEmitter) {
+    mirror_task::spawn_all(config, emitter);
 }
 
 #[cfg(test)]

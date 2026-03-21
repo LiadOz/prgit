@@ -97,6 +97,18 @@ git clone http://localhost:8080/depot/main.git
 | `max_changes` | Maximum number of P4 changes to process per mirror cycle |
 | `shelve.async` | If `true`, pushes return immediately and shelve in the background (default: `false`) |
 
+### Observability config (optional)
+
+```yaml
+observability:
+  channel_capacity: 4096   # bounded event channel size (default: 4096)
+  retention_days: 30       # auto-prune events older than this (default: 30)
+```
+
+The server tracks structured events (pushes, shelves, mirror cycles, auth failures) in SQLite. Events are collected asynchronously via a bounded channel — collection never blocks or slows down request handling. If the channel fills up, events are dropped with a warning log.
+
+Old events are automatically pruned every hour based on `retention_days`.
+
 ### Data directory layout
 
 ```
@@ -150,6 +162,9 @@ Possible states: `queued`, `shelving`, `done`, `failed`.
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/health` | GET | No | Returns 200 OK |
+| `/api/v1/events` | GET | No | Query stored events (params: `event_type`, `since`, `until`, `repo`, `user`, `limit`) |
+| `/api/v1/events/counts` | GET | No | Event counts grouped by type (same filters as above) |
+| `/api/v1/events/users` | GET | No | Active users with push counts and branch counts (params: `since`, `repo`) |
 | `/api/v1/repos/{group}/{name}/shelve/status/{branch}` | GET | No | Shelve status for a branch |
 | `/api/v1/repos/{group}/{name}/shelve/cl-alias` | POST | Yes | Register an alternate CL for mirror branch resolution |
 | `/{group}/{name}.git/*` | GET | No | Git clone/fetch (anonymous) |

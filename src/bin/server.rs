@@ -28,8 +28,8 @@ async fn run() -> Result<()> {
         config.repos.len()
     );
 
-    let app = prgit::window::build_app(&config)?;
-    prgit::window::spawn_mirror_tasks(&config);
+    let (app, emitter) = prgit::window::build_app(&config)?;
+    prgit::window::spawn_mirror_tasks(&config, &emitter);
 
     let listener = tokio::net::TcpListener::bind(&config.listen)
         .await

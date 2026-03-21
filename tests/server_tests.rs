@@ -152,6 +152,7 @@ impl TestServer {
                 max_changes: 100,
                 shelve: None,
             }],
+            observability: Default::default(),
         };
         Self { data_dir, config }
     }
@@ -162,7 +163,7 @@ impl TestServer {
     }
 
     fn app(&self) -> axum::Router {
-        prgit::window::build_app(&self.config).expect("Failed to build app")
+        prgit::window::build_app(&self.config).expect("Failed to build app").0
     }
 
     fn repo_url_prefix(&self) -> String {
@@ -624,4 +625,169 @@ async fn test_shelve_status_nonexistent_repo_returns_404() {
         .await
         .expect("response");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ============================================================
+// Observability events
+// ============================================================
+
+#[test(tokio::test)]
+async fn test_push_emits_events_queryable_via_api() {
+    let server = TestServer::with_security();
+    let (user, ticket) = create_test_user();
+
+    // Push a feature branch (triggers push.received + push.branch_created)
+    let ref_update = format!(
+        "0000000000000000000000000000000000000000 {} refs/heads/obs-test",
+        "a".repeat(40)
+    );
+    let pkt_line = format!("{:04x}{}\n", ref_update.len() + 5, ref_update);
+    let uri = format!("{}/git-receive-pack", server.repo_url_prefix());
+
+    let app = server.app();
+    let _push_resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&uri)
+                .header("authorization", TestServer::basic_auth_header(&user, &ticket))
+                .header("content-type", "application/x-git-receive-pack-request")
+                .body(Body::from(pkt_line))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    // Give the collector a moment to drain the channel
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // Query events API for push.received
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events?event_type=push.received")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let arr = events.as_array().expect("array");
+    assert!(
+        arr.iter().any(|e| e["user"] == user && e["event_type"] == "push.received"),
+        "Expected push.received event for user {user}, got: {events}"
+    );
+
+    // Query for push.branch_created
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events?event_type=push.branch_created")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let arr = events.as_array().expect("array");
+    assert!(
+        arr.iter().any(|e| e["branch"] == "obs-test" && e["event_type"] == "push.branch_created"),
+        "Expected push.branch_created for obs-test, got: {events}"
+    );
+}
+
+#[test(tokio::test)]
+async fn test_events_api_filtering() {
+    let server = TestServer::new();
+
+    // Ensure the DB is initialized by calling app() first
+    let _app = server.app();
+    let db_path = server.data_dir.path().join("prgit.db");
+    {
+        let conn = rusqlite::Connection::open(&db_path).expect("open db");
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let old_ms = now_ms - 86_400_000 * 5; // 5 days ago
+
+        conn.execute(
+            "INSERT INTO events (event_type, timestamp, repo, user, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["push.received", now_ms, "depot/main", "alice", r#"{"event_type":"push.received","user":"alice","repo":"depot/main","payload_bytes":100,"ref_count":1}"#],
+        ).expect("insert");
+        conn.execute(
+            "INSERT INTO events (event_type, timestamp, repo, user, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["shelve.completed", now_ms, "depot/main", "bob", r#"{"event_type":"shelve.completed","user":"bob","repo":"depot/main","changelist":123}"#],
+        ).expect("insert");
+        conn.execute(
+            "INSERT INTO events (event_type, timestamp, repo, user, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["push.received", old_ms, "other/repo", "carol", r#"{"event_type":"push.received","user":"carol","repo":"other/repo","payload_bytes":50,"ref_count":1}"#],
+        ).expect("insert");
+    }
+
+    // Filter by event_type
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events?event_type=push.received")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let arr = events.as_array().expect("array");
+    assert_eq!(arr.len(), 2, "Expected 2 push.received events");
+
+    // Filter by repo
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events?repo=depot/main")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let arr = events.as_array().expect("array");
+    assert_eq!(arr.len(), 2, "Expected 2 events for depot/main");
+
+    // Filter by user
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events?user=alice")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let events: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let arr = events.as_array().expect("array");
+    assert_eq!(arr.len(), 1, "Expected 1 event for alice");
+
+    // Test counts endpoint
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/events/counts")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.expect("body");
+    let counts: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(counts["push.received"], 2);
+    assert_eq!(counts["shelve.completed"], 1);
 }

@@ -12,6 +12,9 @@ use super::shelve_client::{FileAction, FileChange, ShelveClient};
 pub struct ShelveResult {
     pub changelist: usize,
     pub client_name: String,
+    pub is_reshelve: bool,
+    pub file_count: usize,
+    pub commits_in_branch: usize,
 }
 
 pub struct Shelver<'a> {
@@ -39,8 +42,12 @@ impl<'a> Shelver<'a> {
             return Err(ShelverError::NoChanges);
         }
 
+        let file_count = changes.len();
+        let commits_in_branch = self.count_commits(base_oid, target_oid);
+
         let description = target_commit.message().unwrap_or("Shelved from git").to_string();
         let existing_shelve = self.prgit_client.get_shelved_change_for_branch(branch);
+        let is_reshelve = existing_shelve.is_some();
 
         let handle = get_shelve_client(self.prgit_client, user_p4)?;
         let client_name = handle.shelve_client.client_name().to_string();
@@ -48,7 +55,18 @@ impl<'a> Shelver<'a> {
 
         self.prgit_client.set_shelved_change_for_branch(branch, shelve_cl, shelver_user);
 
-        Ok(ShelveResult { changelist: shelve_cl, client_name })
+        Ok(ShelveResult { changelist: shelve_cl, client_name, is_reshelve, file_count, commits_in_branch })
+    }
+
+    fn count_commits(&self, base_oid: git2::Oid, target_oid: git2::Oid) -> usize {
+        let mut revwalk = match self.repo.revwalk() {
+            Ok(rw) => rw,
+            Err(_) => return 0,
+        };
+        if revwalk.push(target_oid).is_err() || revwalk.hide(base_oid).is_err() {
+            return 0;
+        }
+        revwalk.count()
     }
 
     fn find_merge_base_and_change(&self, target_oid: git2::Oid) -> Result<(git2::Oid, usize), ShelverError> {
