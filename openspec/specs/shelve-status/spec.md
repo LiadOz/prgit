@@ -24,8 +24,12 @@ The server SHALL expose `GET /api/v1/repos/{group}/{name}/shelve/status/{branch}
 - **WHEN** a GET request is made to `/api/v1/repos/depot/main/shelve/status/feature-xyz` and the background shelve for `feature-xyz` failed
 - **THEN** the server SHALL respond with status 200 and body `{ "state": "failed", "error": "<error message>" }`
 
+#### Scenario: Branch with completed shelve from previous server session
+- **WHEN** a GET request is made to `/api/v1/repos/depot/main/shelve/status/feature-xyz` and branch `feature-xyz` has no entry in the in-memory tracker but has a mapping in `branch_shelve_mapping` with CL 12345 and shelver user `jsmith`
+- **THEN** the server SHALL respond with status 200 and body `{ "state": "done", "changelist": 12345, "client": "jsmith" }`
+
 #### Scenario: Branch with no shelve activity
-- **WHEN** a GET request is made to `/api/v1/repos/depot/main/shelve/status/feature-xyz` and branch `feature-xyz` has no entry in the active shelves tracker
+- **WHEN** a GET request is made to `/api/v1/repos/depot/main/shelve/status/feature-xyz` and branch `feature-xyz` has no entry in the active shelves tracker and no mapping in `branch_shelve_mapping`
 - **THEN** the server SHALL respond with status 404
 
 #### Scenario: Non-existent repo
