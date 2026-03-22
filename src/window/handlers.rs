@@ -28,13 +28,37 @@ pub async fn shelve_status(
     Path((group, name, branch)): Path<(String, String, String)>,
 ) -> Response {
     let repo_key = format!("{group}/{name}");
-    if !state.repos.contains_key(&repo_key) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
+    let repo_entry = match state.repos.get(&repo_key) {
+        Some(entry) => entry,
+        None => return StatusCode::NOT_FOUND.into_response(),
+    };
 
     let tracker_key = format!("{group}/{name}/{branch}");
-    match state.active_shelves.get(&tracker_key) {
-        Some(shelve_state) => Json(shelve_state).into_response(),
+    if let Some(shelve_state) = state.active_shelves.get(&tracker_key) {
+        return Json(shelve_state).into_response();
+    }
+
+    // Fall back to the database for previously-completed shelves
+    let db = match Database::open(&state.db_path) {
+        Ok(db) => db,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    let client = match db.client(repo_entry.client_id) {
+        Ok(Some(c)) => c,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    match client.get_shelved_change_for_branch(&branch) {
+        Some(changelist) => {
+            let shelver = client
+                .get_shelver_for_change(changelist)
+                .unwrap_or_default();
+            Json(super::ShelveState::Done {
+                changelist,
+                client: shelver,
+            })
+            .into_response()
+        }
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

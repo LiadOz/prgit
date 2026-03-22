@@ -623,6 +623,52 @@ async fn test_shelve_status_nonexistent_repo_returns_404() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
+#[test(tokio::test)]
+async fn test_shelve_status_falls_back_to_database() {
+    let server = TestServer::new();
+    let _app = server.app(); // initializes DB and repos
+
+    // Insert a shelve mapping directly into DB (simulating a previous server session)
+    let db_path = server.data_dir.path().join("prgit.db");
+    {
+        let conn = rusqlite::Connection::open(&db_path).expect("open db");
+        // Get the client_id that was created during app init
+        let client_id: i64 = conn
+            .query_row(
+                "SELECT id FROM prgit_clients LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("client exists");
+        conn.execute(
+            "INSERT INTO branch_shelve_mapping (prgit_client_id, branch, shelved_change, shelver_user) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![client_id, "feature/old-shelve", 98042, "testuser"],
+        )
+        .expect("insert mapping");
+    }
+
+    // Query shelve status — ActiveShelves is empty, should fall back to DB
+    let app = server.app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/repos/depot/main/shelve/status/feature%2Fold-shelve")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    let status: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert_eq!(status["state"], "done");
+    assert_eq!(status["changelist"], 98042);
+    assert_eq!(status["client"], "testuser");
+}
+
 // ============================================================
 // Observability events
 // ============================================================
