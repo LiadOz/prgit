@@ -97,6 +97,15 @@ pub fn spawn_all(config: &ServerConfig, emitter: &EventEmitter) {
                                 merge_parent: info.merge_parent.clone(),
                                 merge_strategy: info.merge_strategy.clone(),
                             });
+                            for depot_path in &info.skipped_files {
+                                emitter_clone.try_emit(ObservabilityEvent::MirrorFileSkipped {
+                                    timestamp: Utc::now(),
+                                    repo: repo_name_clone.clone(),
+                                    p4_change: info.p4_change,
+                                    depot_path: depot_path.clone(),
+                                    reason: ".git path component".to_string(),
+                                });
+                            }
                         }
 
                         // Emit shelve.merged events

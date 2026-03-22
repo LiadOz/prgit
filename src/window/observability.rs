@@ -146,6 +146,15 @@ pub enum ObservabilityEvent {
         merge_strategy: Option<String>,
     },
 
+    #[serde(rename = "mirror.file_skipped")]
+    MirrorFileSkipped {
+        timestamp: DateTime<Utc>,
+        repo: String,
+        p4_change: usize,
+        depot_path: String,
+        reason: String,
+    },
+
     // Auth events
     #[serde(rename = "auth.failed")]
     AuthFailed {
@@ -174,6 +183,7 @@ impl ObservabilityEvent {
             Self::MirrorCycleCompleted { .. } => "mirror.cycle_completed",
             Self::MirrorCycleFailed { .. } => "mirror.cycle_failed",
             Self::MirrorChangeCommitted { .. } => "mirror.change_committed",
+            Self::MirrorFileSkipped { .. } => "mirror.file_skipped",
             Self::AuthFailed { .. } => "auth.failed",
         }
     }
@@ -195,6 +205,7 @@ impl ObservabilityEvent {
             | Self::MirrorCycleCompleted { timestamp, .. }
             | Self::MirrorCycleFailed { timestamp, .. }
             | Self::MirrorChangeCommitted { timestamp, .. }
+            | Self::MirrorFileSkipped { timestamp, .. }
             | Self::AuthFailed { timestamp, .. } => *timestamp,
         }
     }
@@ -216,6 +227,7 @@ impl ObservabilityEvent {
             | Self::MirrorCycleCompleted { repo, .. }
             | Self::MirrorCycleFailed { repo, .. }
             | Self::MirrorChangeCommitted { repo, .. }
+            | Self::MirrorFileSkipped { repo, .. }
             | Self::AuthFailed { repo, .. } => repo,
         }
     }
@@ -236,7 +248,8 @@ impl ObservabilityEvent {
             Self::PushRejected { user, .. } | Self::AuthFailed { user, .. } => user.as_deref(),
             Self::MirrorCycleStarted { .. }
             | Self::MirrorCycleCompleted { .. }
-            | Self::MirrorCycleFailed { .. } => None,
+            | Self::MirrorCycleFailed { .. }
+            | Self::MirrorFileSkipped { .. } => None,
         }
     }
 }

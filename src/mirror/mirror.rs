@@ -16,6 +16,7 @@ pub struct MirrorChangeInfo {
     pub duration_ms: u64,
     pub merge_parent: Option<String>,
     pub merge_strategy: Option<String>,
+    pub skipped_files: Vec<String>,
 }
 
 pub struct Mirror<M: MirrorData> {
@@ -77,12 +78,13 @@ impl<M: MirrorData> Mirror<M> {
             .mirror_data
             .get_related_branch(change.old_change.unwrap_or(change.change));
 
-        let commit_hash = self.create_commit(&change, &ctx).map_err(|e| {
-            MirrorError::MirrorFailed(format!(
-                "Failed to commit change {} (user={}, client={}, files={}, desc={:?}): {}",
-                change.change, change.user, change.client, file_count, change.desc, e
-            ))
-        })?;
+        let (commit_hash, skipped_files) =
+            self.create_commit(&change, &ctx).map_err(|e| {
+                MirrorError::MirrorFailed(format!(
+                    "Failed to commit change {} (user={}, client={}, files={}, desc={:?}): {}",
+                    change.change, change.user, change.client, file_count, change.desc, e
+                ))
+            })?;
         self.mirror_data
             .map_commit_to_change(&commit_hash, change.change);
         self.mirror_data.set_last_sync_change(change.change);
@@ -100,6 +102,7 @@ impl<M: MirrorData> Mirror<M> {
             duration_ms: start.elapsed().as_millis() as u64,
             merge_parent,
             merge_strategy,
+            skipped_files,
         })
     }
 
@@ -152,7 +155,7 @@ impl<M: MirrorData> Mirror<M> {
         &self,
         change: &ChangeData,
         ctx: &ChangeContext,
-    ) -> Result<String, MirrorError> {
+    ) -> Result<(String, Vec<String>), MirrorError> {
         let mut builder = CommitBuilder::from_head(&self.repo)?;
         if let Some(branch) = self
             .mirror_data
@@ -171,6 +174,7 @@ impl<M: MirrorData> Mirror<M> {
             }
         }
 
+        let mut skipped_files = Vec::new();
         for file in &ctx.file_data {
             let path_in_repo = file
                 .depot_file
@@ -181,6 +185,19 @@ impl<M: MirrorData> Mirror<M> {
                         file.depot_file, ctx.depot_base
                     ))
                 })?;
+
+            if std::path::Path::new(path_in_repo)
+                .components()
+                .any(|c| c.as_os_str() == ".git")
+            {
+                log::warn!(
+                    "Skipping file with .git path component: {}",
+                    file.depot_file
+                );
+                skipped_files.push(file.depot_file.clone());
+                continue;
+            }
+
             let path_in_temp = ctx.temp_dir.path().join(path_in_repo);
             let mode = Self::file_mode(&file.file_type);
 
@@ -211,7 +228,7 @@ impl<M: MirrorData> Mirror<M> {
             &metadata,
         )?;
         log::debug!("Committed change {change:?} with hash {commit_hash}");
-        Ok(commit_hash.to_string())
+        Ok((commit_hash.to_string(), skipped_files))
     }
 
     fn file_mode(file_type: &p4rs::FileType) -> FileMode {

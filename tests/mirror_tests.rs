@@ -296,6 +296,46 @@ fn test_symlink_file() {
     );
 }
 
+#[test]
+fn test_dotgit_file_skipped() {
+    let env = MirrorTestEnv::new();
+    env.p4_client
+        .changelist("Add submodule .git file")
+        .add_file("submod/.git", b"gitdir: ../.git/modules/submod")
+        .submit()
+        .expect("submit failed");
+
+    env.mirror().run().expect("Mirror should not fail on .git files");
+    assert_eq!(env.git_commit_count(), 1);
+    let git_files = env.get_git_files();
+    assert!(
+        !git_files.contains_key("submod/.git"),
+        ".git file should be absent from git tree"
+    );
+}
+
+#[test]
+fn test_dotgit_file_skipped_other_files_mirrored() {
+    let env = MirrorTestEnv::new();
+    env.p4_client
+        .changelist("Mixed change with .git file")
+        .add_file("normal.txt", b"hello")
+        .add_file("submod/.git", b"gitdir: ../.git/modules/submod")
+        .add_file("other.txt", b"world")
+        .submit()
+        .expect("submit failed");
+
+    env.mirror().run().expect("Mirror should not fail");
+    assert_eq!(env.git_commit_count(), 1);
+    let git_files = env.get_git_files();
+    assert!(git_files.contains_key("normal.txt"), "normal.txt should be mirrored");
+    assert!(git_files.contains_key("other.txt"), "other.txt should be mirrored");
+    assert!(
+        !git_files.contains_key("submod/.git"),
+        ".git file should be skipped"
+    );
+}
+
 struct MirrorTestEnv {
     p4_client: TestClient,
     git_dir: TempDir,
