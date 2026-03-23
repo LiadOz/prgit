@@ -827,4 +827,130 @@ mod tests {
 
         cleanup_shelved_change(&tc, cl);
     }
+
+    /// Test that reshelving (p4 shelve -r) preserves file type modifiers
+    #[test]
+    fn test_reshelve_preserves_file_type_modifiers() {
+        let tc = SERVER.test_client();
+
+        // Create a file with text+k in P4
+        let base = tc
+            .changelist("Add keyword file")
+            .add_file_with_opts(
+                "version.h",
+                b"$Id$\nv1",
+                Some(p4rs::FileType::text().keyword_expansion()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // First shelve
+        let tmp1 = TempDir::new().unwrap();
+        fs::write(tmp1.path().join("version.h"), b"$Id$\nv2").unwrap();
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl = client
+            .run(base, tmp1.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "First edit", None)
+            .unwrap();
+
+        // Verify first shelve preserves +k
+        let shelved = tc.p4.describe(&[cl]).shelved().run().unwrap().single().unwrap();
+        assert!(shelved.files[0].file_type.keyword_expansion, "First shelve should preserve +k");
+
+        // Reshelve (same CL)
+        let tmp2 = TempDir::new().unwrap();
+        fs::write(tmp2.path().join("version.h"), b"$Id$\nv3").unwrap();
+        let client2 = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl2 = client2
+            .run(base, tmp2.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "Second edit", Some(cl))
+            .unwrap();
+        assert_eq!(cl, cl2, "Should reuse same CL");
+
+        // Verify reshelve also preserves +k
+        let shelved2 = tc.p4.describe(&[cl2]).shelved().run().unwrap().single().unwrap();
+        let shelved_type = &shelved2.files[0].file_type;
+        assert!(
+            shelved_type.keyword_expansion,
+            "Reshelve should preserve +k, got: {shelved_type:?}"
+        );
+        assert!(
+            !shelved_type.compressed,
+            "Reshelve should NOT gain +C, got: {shelved_type:?}"
+        );
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    /// Reproduces reported bug: text+k file edited through prgit becomes text+C
+    #[test]
+    fn test_edit_preserves_keyword_expansion_modifier() {
+        let tc = SERVER.test_client();
+
+        // Create a file with text+k (keyword expansion) in P4
+        let base = tc
+            .changelist("Add file with keyword expansion")
+            .add_file_with_opts(
+                "version.h",
+                b"// $Id$\nconst char* version = \"1.0\";",
+                Some(p4rs::FileType::text().keyword_expansion()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Edit content only, no permission changes
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("version.h"),
+            b"// $Id$\nconst char* version = \"2.0\";",
+        )
+        .unwrap();
+
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+
+        let changes = [FileChange {
+            path: "version.h",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Edit version", None)
+            .unwrap();
+
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        let shelved_type = &shelved.files[0].file_type;
+        assert!(
+            shelved_type.keyword_expansion,
+            "Should preserve keyword expansion (+k), got: {shelved_type:?}"
+        );
+        assert!(
+            !shelved_type.compressed,
+            "Should NOT gain compressed (+C) flag, got: {shelved_type:?}"
+        );
+        assert_eq!(shelved_type.base, p4rs::BaseFileType::Text);
+
+        cleanup_shelved_change(&tc, cl);
+    }
 }

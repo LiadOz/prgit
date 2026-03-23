@@ -193,6 +193,7 @@ impl<'a> Shelver<'a> {
         target: &git2::Commit,
         changes: &[ChangedFile],
     ) -> Result<tempfile::TempDir, ShelverError> {
+        use std::os::unix::fs::PermissionsExt;
         let temp_dir = tempfile::TempDir::new()?;
         let tree = target.tree()?;
 
@@ -208,6 +209,10 @@ impl<'a> Shelver<'a> {
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&dest_path, blob.content())?;
+            // Preserve executable bit from git tree entry
+            if entry.filemode() == i32::from(git2::FileMode::BlobExecutable) {
+                std::fs::set_permissions(&dest_path, std::fs::Permissions::from_mode(0o755))?;
+            }
         }
 
         Ok(temp_dir)
@@ -320,22 +325,46 @@ mod tests {
         env.db.client(client_id).unwrap().unwrap()
     }
 
+    struct FileSpec<'a> {
+        path: &'a str,
+        content: &'a [u8],
+        executable: bool,
+    }
+
     fn create_feature_commit(
         repo: &Repository,
         base_oid: git2::Oid,
         files: &[(&str, &[u8])],
         message: &str,
     ) -> git2::Oid {
+        let specs: Vec<FileSpec> = files
+            .iter()
+            .map(|(p, c)| FileSpec { path: p, content: c, executable: false })
+            .collect();
+        create_feature_commit_with_modes(repo, base_oid, &specs, message)
+    }
+
+    fn create_feature_commit_with_modes(
+        repo: &Repository,
+        base_oid: git2::Oid,
+        files: &[FileSpec],
+        message: &str,
+    ) -> git2::Oid {
+        use std::os::unix::fs::PermissionsExt;
         let sig = Signature::now("Test", "test@test.com").unwrap();
         let mut index = repo.index().unwrap();
 
-        for (path, content) in files {
-            let full_path = repo.workdir().unwrap().join(path);
+        for spec in files {
+            let full_path = repo.workdir().unwrap().join(spec.path);
             if let Some(parent) = full_path.parent() {
                 std::fs::create_dir_all(parent).unwrap();
             }
-            std::fs::write(&full_path, content).unwrap();
-            index.add_path(Path::new(path)).unwrap();
+            std::fs::write(&full_path, spec.content).unwrap();
+            if spec.executable {
+                std::fs::set_permissions(&full_path, std::fs::Permissions::from_mode(0o755))
+                    .unwrap();
+            }
+            index.add_path(Path::new(spec.path)).unwrap();
         }
 
         index.write().unwrap();
@@ -684,5 +713,139 @@ mod tests {
 
         assert!(files.contains(&"old_name.txt"), "Should delete old file");
         assert!(files.contains(&"new_name.txt"), "Should add new file");
+    }
+
+    /// End-to-end: executable file (text+x in P4, 100755 in git) edited in git.
+    /// Without the extract_files_to_temp fix, the executable bit is lost during
+    /// extraction, causing determine_file_type to return 'text' and reopen to
+    /// strip the +x modifier.
+    #[test]
+    fn test_shelve_preserves_executable_through_full_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let env = setup_test_env();
+
+        // Create executable file in P4
+        let base_change = env
+            .p4_client
+            .changelist("Add executable script")
+            .add_file_with_opts(
+                "run.py",
+                b"#!/usr/bin/env python\nprint('v1')",
+                Some(p4rs::FileType::text().executable()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Mirror to git with executable bit (100755)
+        let workdir = env.git_repo.workdir().unwrap();
+        let script_path = workdir.join("run.py");
+        std::fs::write(&script_path, b"#!/usr/bin/env python\nprint('v1')").unwrap();
+        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let base_oid = {
+            let sig = Signature::now("Test", "test@test.com").unwrap();
+            let mut index = env.git_repo.index().unwrap();
+            index.add_path(Path::new("run.py")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = env.git_repo.find_tree(tree_id).unwrap();
+            env.git_repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[]).unwrap()
+        };
+
+        // Create feature branch: edit content, keep executable
+        let feature_oid = create_feature_commit_with_modes(
+            &env.git_repo,
+            base_oid,
+            &[FileSpec { path: "run.py", content: b"#!/usr/bin/env python\nprint('v2')", executable: true }],
+            "Edit script",
+        );
+        env.git_repo
+            .branch("feature", &env.git_repo.find_commit(feature_oid).unwrap(), false)
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap();
+
+        let described = env.p4_client.p4.describe(&[result.changelist]).shelved().run().unwrap().single().unwrap();
+        assert_eq!(described.files.len(), 1);
+        let shelved_type = &described.files[0].file_type;
+        assert!(
+            shelved_type.executable,
+            "Should preserve executable through full shelve path, got: {shelved_type:?}"
+        );
+    }
+
+    /// End-to-end test: P4 file with text+k, mirrored to git, edited in git,
+    /// pushed back through Shelver. The shelved CL should preserve text+k.
+    #[test]
+    fn test_shelve_preserves_keyword_modifier_e2e() {
+        let env = setup_test_env();
+
+        // Create a file with text+k in P4
+        let base_change = env
+            .p4_client
+            .changelist("Add keyword file")
+            .add_file_with_opts(
+                "version.h",
+                b"// $Id$\nversion 1",
+                Some(p4rs::FileType::text().keyword_expansion()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Mirror to git (simulate: create same content in git repo on master)
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("version.h", b"// $Id$\nversion 1")],
+            "Initial commit",
+        );
+
+        // Create feature branch with edited content
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("version.h", b"// $Id$\nversion 2")],
+            "Update version",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser")
+            .unwrap();
+
+        // Verify the shelved file preserves text+k
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(described.files.len(), 1);
+        let shelved_type = &described.files[0].file_type;
+        assert!(
+            shelved_type.keyword_expansion,
+            "Should preserve keyword expansion (+k), got: {shelved_type:?}"
+        );
+        assert!(
+            !shelved_type.compressed,
+            "Should NOT gain compressed (+C), got: {shelved_type:?}"
+        );
     }
 }
