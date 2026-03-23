@@ -5,6 +5,7 @@ use git2::Repository;
 
 use crate::cabinet::Database;
 use crate::mirror::{Mirror, MirrorChangeInfo, MirrorData};
+use p4rs::P4Command;
 
 use super::observability::{EventEmitter, ObservabilityEvent};
 use super::ServerConfig;
@@ -52,6 +53,7 @@ pub fn spawn_all(config: &ServerConfig, emitter: &EventEmitter) {
                     let change_infos = mirror.run()?;
 
                     // Look up shelve.merged info for changes that had merge parents
+                    // and clean up the shelved CLs
                     let mut merged = Vec::new();
                     let db2 = Database::open(&db_path)?;
                     for info in &change_infos {
@@ -66,6 +68,14 @@ pub fn spawn_all(config: &ServerConfig, emitter: &EventEmitter) {
                                     submitted_cl: info.p4_change,
                                     shelver_user,
                                 });
+
+                                // Clean up: delete the shelved CL and remove the mapping
+                                let p4 = client2.p4();
+                                match p4.shelve().delete(shelved_cl).run() {
+                                    Ok(_) => log::info!("Deleted shelved CL {shelved_cl} for merged branch '{branch}'"),
+                                    Err(e) => log::warn!("Failed to delete shelved CL {shelved_cl} for branch '{branch}': {e}"),
+                                }
+                                client2.clear_shelved_change_for_branch(branch);
                             }
                         }
                     }
