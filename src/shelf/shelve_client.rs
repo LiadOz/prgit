@@ -13,6 +13,19 @@ pub struct FileChange<'a> {
     pub action: FileAction,
 }
 
+/// Apply only the git-representable attributes (base type + executable) from `git_type`
+/// onto the depot type, preserving all P4-specific modifiers.
+fn apply_git_type_to_depot(depot_type: &p4rs::FileType, git_type: &p4rs::FileType) -> p4rs::FileType {
+    // If the base type changed (e.g. text → symlink), use the new base type without old modifiers
+    if depot_type.base != git_type.base {
+        return git_type.clone();
+    }
+    // Same base type: preserve depot modifiers, only toggle executable
+    let mut result = depot_type.clone();
+    result.executable = git_type.executable;
+    result
+}
+
 pub struct ShelveClient {
     p4: P4,
     client_name: String,
@@ -116,19 +129,33 @@ impl ShelveClient {
                     builder.add(change.path)?;
                 }
                 FileAction::Edit => {
-                    let new_type = ChangelistBuilder::determine_file_type(&src)?;
-                    let old_type = ChangelistBuilder::determine_file_type(&dest)?;
+                    let git_type = ChangelistBuilder::determine_file_type(&src)?;
                     let full_path = self.client_root.join(change.path);
+                    let full_path_str = full_path.to_string_lossy().to_string();
                     self.p4
-                        .edit(&[full_path.to_string_lossy().as_ref()])
+                        .edit(&[full_path_str.as_ref()])
                         .changelist(changelist)
                         .run()?;
-                    if new_type != old_type {
-                        self.p4
-                            .reopen(&[full_path.to_string_lossy().as_ref()])
-                            .changelist(changelist)
-                            .file_type(new_type)
-                            .run()?;
+
+                    // Get the depot file type (preserves P4 modifiers like +C, +k, +l)
+                    let depot_type = self
+                        .p4
+                        .opened(&[full_path_str.as_ref()])
+                        .run()?
+                        .into_iter()
+                        .next()
+                        .map(|f| f.file_type);
+
+                    if let Some(depot_type) = depot_type {
+                        // Apply only the bits git can represent onto the depot type
+                        let effective_type = apply_git_type_to_depot(&depot_type, &git_type);
+                        if effective_type != depot_type {
+                            self.p4
+                                .reopen(&[full_path_str.as_ref()])
+                                .changelist(changelist)
+                                .file_type(effective_type)
+                                .run()?;
+                        }
                     }
                     Self::copy_file(&src, &dest)?;
                 }
@@ -557,6 +584,197 @@ mod tests {
         assert_eq!(shelved.files.len(), 1);
         assert!(shelved.files[0].depot_file.ends_with("config.txt"));
         assert_eq!(shelved.files[0].file_type.base, p4rs::BaseFileType::Symlink);
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    /// Reproduces the bug where editing a file with P4 modifiers (e.g. text+Cx)
+    /// through prgit strips the modifiers, leaving only what git can represent.
+    #[test]
+    fn test_edit_preserves_p4_file_type_modifiers() {
+        use std::os::unix::fs::PermissionsExt;
+        let tc = SERVER.test_client();
+
+        // Create a file with text+Cx (compressed + executable) type in P4
+        let base = tc
+            .changelist("Add script with modifiers")
+            .add_file_with_opts(
+                "run.sh",
+                b"#!/bin/bash\necho hello",
+                Some(p4rs::FileType::text().compressed().executable()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Edit the file content (keep executable bit) and shelve
+        let tmp = TempDir::new().unwrap();
+        let new_script = tmp.path().join("run.sh");
+        fs::write(&new_script, b"#!/bin/bash\necho modified").unwrap();
+        fs::set_permissions(&new_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+
+        let changes = [FileChange {
+            path: "run.sh",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Edit script", None)
+            .unwrap();
+
+        // Check the shelved file type — should still have compressed + executable
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        let shelved_type = &shelved.files[0].file_type;
+        assert!(
+            shelved_type.executable,
+            "Shelved file should preserve executable flag, got: {shelved_type:?}"
+        );
+        assert!(
+            shelved_type.compressed,
+            "Shelved file should preserve compressed flag, got: {shelved_type:?}"
+        );
+        assert_eq!(
+            shelved_type.base,
+            p4rs::BaseFileType::Text,
+            "Shelved file should remain text type"
+        );
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    /// When the executable bit changes on a file with P4 modifiers,
+    /// the shelver should only toggle the executable flag and preserve
+    /// all other modifiers (e.g. +C, +k).
+    #[test]
+    fn test_edit_adding_executable_preserves_other_modifiers() {
+        use std::os::unix::fs::PermissionsExt;
+        let tc = SERVER.test_client();
+
+        // Create a file with text+C (compressed, non-executable) type in P4
+        let base = tc
+            .changelist("Add compressed file")
+            .add_file_with_opts(
+                "data.txt",
+                b"some data",
+                Some(p4rs::FileType::text().compressed()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Edit and make it executable in git
+        let tmp = TempDir::new().unwrap();
+        let new_file = tmp.path().join("data.txt");
+        fs::write(&new_file, b"modified data").unwrap();
+        fs::set_permissions(&new_file, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+
+        let changes = [FileChange {
+            path: "data.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Make executable", None)
+            .unwrap();
+
+        // Should be text+Cx — executable added, compressed preserved
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        let shelved_type = &shelved.files[0].file_type;
+        assert!(
+            shelved_type.executable,
+            "Should have executable flag after chmod, got: {shelved_type:?}"
+        );
+        assert!(
+            shelved_type.compressed,
+            "Should preserve compressed flag, got: {shelved_type:?}"
+        );
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    #[test]
+    fn test_edit_removing_executable_preserves_other_modifiers() {
+        let tc = SERVER.test_client();
+
+        // Create a file with text+kx (keyword expansion + executable) in P4
+        let base = tc
+            .changelist("Add file with keyword+exec")
+            .add_file_with_opts(
+                "versioned.txt",
+                b"$Id$\nsome content",
+                Some(p4rs::FileType::text().keyword_expansion().executable()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // Edit and remove executable in git (no +x permission)
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("versioned.txt"), b"$Id$\nmodified content").unwrap();
+        // Default permissions are non-executable (0o644)
+
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+
+        let changes = [FileChange {
+            path: "versioned.txt",
+            action: FileAction::Edit,
+        }];
+        let cl = client
+            .run(base, tmp.path(), &changes, "Remove executable", None)
+            .unwrap();
+
+        // Should be text+k — executable removed, keyword expansion preserved
+        let shelved = tc
+            .p4
+            .describe(&[cl])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(shelved.files.len(), 1);
+        let shelved_type = &shelved.files[0].file_type;
+        assert!(
+            !shelved_type.executable,
+            "Should not have executable flag, got: {shelved_type:?}"
+        );
+        assert!(
+            shelved_type.keyword_expansion,
+            "Should preserve keyword expansion flag, got: {shelved_type:?}"
+        );
 
         cleanup_shelved_change(&tc, cl);
     }

@@ -264,26 +264,30 @@ impl FileType {
 impl std::fmt::Display for FileType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.base)?;
+        let mut modifiers = String::new();
         if self.writable {
-            write!(f, "+w")?;
+            modifiers.push('w');
         }
         if self.executable {
-            write!(f, "+x")?;
+            modifiers.push('x');
         }
         if self.keyword_expansion {
-            write!(f, "+k")?;
+            modifiers.push('k');
         }
         if self.exclusive_lock {
-            write!(f, "+l")?;
+            modifiers.push('l');
         }
         if self.full_revisions {
-            write!(f, "+F")?;
+            modifiers.push('F');
         }
         if self.compressed {
-            write!(f, "+C")?;
+            modifiers.push('C');
         }
         if self.rcs_deltas {
-            write!(f, "+D")?;
+            modifiers.push('D');
+        }
+        if !modifiers.is_empty() {
+            write!(f, "+{modifiers}")?;
         }
         Ok(())
     }
