@@ -642,6 +642,213 @@ mod tests {
     }
 
     #[test]
+    fn test_reshelve_removes_stale_files() {
+        let env = setup_test_env();
+
+        let base_change = env
+            .p4_client
+            .changelist("Initial")
+            .add_file("existing.txt", b"content")
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("existing.txt", b"content")],
+            "Initial commit",
+        );
+
+        // First shelve: add both file_a.txt and file_b.txt
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("file_a.txt", b"aaa"), ("file_b.txt", b"bbb")],
+            "Add two files",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let first_result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[first_result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        assert_eq!(described.files.len(), 2, "First shelve should have 2 files");
+
+        // Reshelve: branch now only has file_b.txt (file_a.txt removed)
+        // Reset index to base tree so file_a.txt is not carried over
+        {
+            let base_tree = env.git_repo.find_commit(base_oid).unwrap().tree().unwrap();
+            let mut index = env.git_repo.index().unwrap();
+            index.read_tree(&base_tree).unwrap();
+            index.write().unwrap();
+        }
+        let feature_oid2 = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("file_b.txt", b"bbb updated")],
+            "Only file_b",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid2).unwrap(),
+                true,
+            )
+            .unwrap();
+
+        let second_result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        assert_eq!(first_result.changelist, second_result.changelist);
+
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[second_result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        let file_names: Vec<&str> = described
+            .files
+            .iter()
+            .map(|f| f.depot_file.split('/').next_back().unwrap())
+            .collect();
+        assert_eq!(
+            file_names.len(),
+            1,
+            "Reshelve should have only 1 file, got: {file_names:?}"
+        );
+        assert!(
+            file_names.contains(&"file_b.txt"),
+            "Should contain file_b.txt, got: {file_names:?}"
+        );
+        assert!(
+            !file_names.contains(&"file_a.txt"),
+            "Should NOT contain stale file_a.txt, got: {file_names:?}"
+        );
+    }
+
+    #[test]
+    fn test_reshelve_replaces_all_files() {
+        let env = setup_test_env();
+
+        let base_change = env
+            .p4_client
+            .changelist("Initial")
+            .add_file("existing.txt", b"content")
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("existing.txt", b"content")],
+            "Initial commit",
+        );
+
+        // First shelve: add file_a.txt
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("file_a.txt", b"aaa")],
+            "Add file_a",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let first_result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        // Reshelve: completely different file set (file_a removed, file_b added)
+        // Reset index to base tree so file_a.txt is not carried over
+        {
+            let base_tree = env.git_repo.find_commit(base_oid).unwrap().tree().unwrap();
+            let mut index = env.git_repo.index().unwrap();
+            index.read_tree(&base_tree).unwrap();
+            index.write().unwrap();
+        }
+        let feature_oid2 = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[("file_b.txt", b"bbb")],
+            "Replace with file_b",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid2).unwrap(),
+                true,
+            )
+            .unwrap();
+
+        let second_result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        assert_eq!(first_result.changelist, second_result.changelist);
+
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[second_result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        let file_names: Vec<&str> = described
+            .files
+            .iter()
+            .map(|f| f.depot_file.split('/').next_back().unwrap())
+            .collect();
+        assert_eq!(
+            file_names.len(),
+            1,
+            "Should have exactly 1 file after replacing all, got: {file_names:?}"
+        );
+        assert!(
+            file_names.contains(&"file_b.txt"),
+            "Should contain file_b.txt, got: {file_names:?}"
+        );
+        assert!(
+            !file_names.contains(&"file_a.txt"),
+            "Should NOT contain old file_a.txt, got: {file_names:?}"
+        );
+    }
+
+    #[test]
     fn test_shelve_moved_file() {
         let env = setup_test_env();
 

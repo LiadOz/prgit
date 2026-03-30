@@ -207,13 +207,17 @@ impl ShelveClient {
         base_change: usize,
         base_dir: &Path,
         changes: &[FileChange],
+        is_reshelve: bool,
     ) -> Result<(), P4Error> {
+        if is_reshelve {
+            self.p4.shelve().delete(cl).run()?;
+        }
         self.sync(
             base_change,
             &changes.iter().map(|c| c.path).collect::<Vec<&str>>(),
         )?;
         self.apply_changes(cl, base_dir, changes)?;
-        self.p4.shelve().set(cl).replace().run()?;
+        self.p4.shelve().set(cl).run()?;
         Self::cleanup_workspace(&self.p4, &self.client_root)?;
         Ok(())
     }
@@ -227,8 +231,9 @@ impl ShelveClient {
         original_change: Option<usize>,
         description_mode: ShelveDescriptionMode,
     ) -> Result<usize, P4Error> {
+        let is_reshelve = original_change.is_some();
         let cl = self.create_or_reuse_changelist(description, original_change, description_mode)?;
-        self.shelve_changelist(cl, base_change, base_dir, changes)?;
+        self.shelve_changelist(cl, base_change, base_dir, changes, is_reshelve)?;
         Ok(cl)
     }
 }
@@ -1083,4 +1088,5 @@ mod tests {
 
         cleanup_shelved_change(&tc, cl);
     }
+
 }
