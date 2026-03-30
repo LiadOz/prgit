@@ -1,5 +1,16 @@
 use p4rs::{ChangeSpec, ChangeType, ChangelistBuilder, P4Command, P4Error, P4};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShelveDescriptionMode {
+    /// Always update the CL description from the current branch tip commit (default).
+    #[default]
+    Update,
+    /// Keep the description from the first shelve, never update on reshelve.
+    KeepOriginal,
+}
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum FileAction {
@@ -167,13 +178,25 @@ impl ShelveClient {
         builder.flush()
     }
 
+    fn update_change_description(&self, cl: usize, description: &str) -> Result<(), P4Error> {
+        let change_spec = ChangeSpec::new(ChangeType::Number(cl)).description(description);
+        self.p4.change().set(&change_spec).run()?;
+        Ok(())
+    }
+
     pub fn create_or_reuse_changelist(
         &self,
         description: &str,
         original_change: Option<usize>,
+        description_mode: ShelveDescriptionMode,
     ) -> Result<usize, P4Error> {
         match original_change {
-            Some(cl) => Ok(cl),
+            Some(cl) => {
+                if description_mode == ShelveDescriptionMode::Update {
+                    self.update_change_description(cl, description)?;
+                }
+                Ok(cl)
+            }
             None => self.create_empty_change(description),
         }
     }
@@ -202,8 +225,9 @@ impl ShelveClient {
         changes: &[FileChange],
         description: &str,
         original_change: Option<usize>,
+        description_mode: ShelveDescriptionMode,
     ) -> Result<usize, P4Error> {
-        let cl = self.create_or_reuse_changelist(description, original_change)?;
+        let cl = self.create_or_reuse_changelist(description, original_change, description_mode)?;
         self.shelve_changelist(cl, base_change, base_dir, changes)?;
         Ok(cl)
     }
@@ -254,7 +278,7 @@ mod tests {
             action: FileAction::Add,
         }];
         let cl = client
-            .run(0, tmp.path(), &changes, "Add new file", None)
+            .run(0, tmp.path(), &changes, "Add new file", None, Default::default())
             .unwrap();
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
         assert_eq!(shelved.description.trim(), "Add new file");
@@ -281,7 +305,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Edit file", None)
+            .run(base, tmp.path(), &changes, "Edit file", None, Default::default())
             .unwrap();
 
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
@@ -308,7 +332,7 @@ mod tests {
             action: FileAction::Delete,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Delete file", None)
+            .run(base, tmp.path(), &changes, "Delete file", None, Default::default())
             .unwrap();
 
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
@@ -339,7 +363,7 @@ mod tests {
             action: FileAction::Add,
         }];
         let cl = client
-            .run(0, tmp.path(), &changes, "Add executable", None)
+            .run(0, tmp.path(), &changes, "Add executable", None, Default::default())
             .unwrap();
 
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
@@ -378,7 +402,7 @@ mod tests {
             },
         ];
         let cl = client
-            .run(base, tmp.path(), &changes, "Multiple changes", None)
+            .run(base, tmp.path(), &changes, "Multiple changes", None, Default::default())
             .unwrap();
 
         let shelved = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
@@ -438,7 +462,7 @@ mod tests {
         }];
 
         let cl = client
-            .run(base2, tmp.path(), &changes, "Edit from base2", None)
+            .run(base2, tmp.path(), &changes, "Edit from base2", None, Default::default())
             .expect("Failed to run shelve client");
 
         let shelved = tc
@@ -476,7 +500,7 @@ mod tests {
             action: FileAction::Add,
         }];
         let cl = client
-            .run(0, tmp.path(), &changes, "Add symlink", None)
+            .run(0, tmp.path(), &changes, "Add symlink", None, Default::default())
             .unwrap();
 
         let shelved = tc
@@ -525,7 +549,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Edit symlink", None)
+            .run(base, tmp.path(), &changes, "Edit symlink", None, Default::default())
             .unwrap();
 
         let shelved = tc
@@ -570,7 +594,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Convert to symlink", None)
+            .run(base, tmp.path(), &changes, "Convert to symlink", None, Default::default())
             .unwrap();
 
         let shelved = tc
@@ -625,7 +649,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Edit script", None)
+            .run(base, tmp.path(), &changes, "Edit script", None, Default::default())
             .unwrap();
 
         // Check the shelved file type — should still have compressed + executable
@@ -694,7 +718,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Make executable", None)
+            .run(base, tmp.path(), &changes, "Make executable", None, Default::default())
             .unwrap();
 
         // Should be text+Cx — executable added, compressed preserved
@@ -753,7 +777,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Remove executable", None)
+            .run(base, tmp.path(), &changes, "Remove executable", None, Default::default())
             .unwrap();
 
         // Should be text+k — executable removed, keyword expansion preserved
@@ -810,7 +834,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Convert to regular file", None)
+            .run(base, tmp.path(), &changes, "Convert to regular file", None, Default::default())
             .unwrap();
 
         let shelved = tc
@@ -855,7 +879,7 @@ mod tests {
         )
         .unwrap();
         let cl = client
-            .run(base, tmp1.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "First edit", None)
+            .run(base, tmp1.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "First edit", None, Default::default())
             .unwrap();
 
         // Verify first shelve preserves +k
@@ -872,7 +896,7 @@ mod tests {
         )
         .unwrap();
         let cl2 = client2
-            .run(base, tmp2.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "Second edit", Some(cl))
+            .run(base, tmp2.path(), &[FileChange { path: "version.h", action: FileAction::Edit }], "Second edit", Some(cl), Default::default())
             .unwrap();
         assert_eq!(cl, cl2, "Should reuse same CL");
 
@@ -928,7 +952,7 @@ mod tests {
             action: FileAction::Edit,
         }];
         let cl = client
-            .run(base, tmp.path(), &changes, "Edit version", None)
+            .run(base, tmp.path(), &changes, "Edit version", None, Default::default())
             .unwrap();
 
         let shelved = tc
@@ -950,6 +974,112 @@ mod tests {
             "Should NOT gain compressed (+C) flag, got: {shelved_type:?}"
         );
         assert_eq!(shelved_type.base, p4rs::BaseFileType::Text);
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    #[test]
+    fn test_reshelve_updates_description_in_update_mode() {
+        let tc = SERVER.test_client();
+        let base = setup_test_files(&tc);
+
+        let tmp1 = TempDir::new().unwrap();
+        fs::write(tmp1.path().join("file1.txt"), b"v2").unwrap();
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl = client
+            .run(
+                base,
+                tmp1.path(),
+                &[FileChange { path: "file1.txt", action: FileAction::Edit }],
+                "First description",
+                None,
+                ShelveDescriptionMode::Update,
+            )
+            .unwrap();
+
+        let described = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
+        assert_eq!(described.description.trim(), "First description");
+
+        // Reshelve with Update mode — description should change
+        let tmp2 = TempDir::new().unwrap();
+        fs::write(tmp2.path().join("file1.txt"), b"v3").unwrap();
+        let client2 = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        client2
+            .run(
+                base,
+                tmp2.path(),
+                &[FileChange { path: "file1.txt", action: FileAction::Edit }],
+                "Updated description",
+                Some(cl),
+                ShelveDescriptionMode::Update,
+            )
+            .unwrap();
+
+        let described2 = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
+        assert_eq!(described2.description.trim(), "Updated description");
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    #[test]
+    fn test_reshelve_keeps_description_in_keep_original_mode() {
+        let tc = SERVER.test_client();
+        let base = setup_test_files(&tc);
+
+        let tmp1 = TempDir::new().unwrap();
+        fs::write(tmp1.path().join("file1.txt"), b"v2").unwrap();
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl = client
+            .run(
+                base,
+                tmp1.path(),
+                &[FileChange { path: "file1.txt", action: FileAction::Edit }],
+                "Original description",
+                None,
+                ShelveDescriptionMode::KeepOriginal,
+            )
+            .unwrap();
+
+        let described = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
+        assert_eq!(described.description.trim(), "Original description");
+
+        // Reshelve with KeepOriginal mode — description should NOT change
+        let tmp2 = TempDir::new().unwrap();
+        fs::write(tmp2.path().join("file1.txt"), b"v3").unwrap();
+        let client2 = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        client2
+            .run(
+                base,
+                tmp2.path(),
+                &[FileChange { path: "file1.txt", action: FileAction::Edit }],
+                "This should be ignored",
+                Some(cl),
+                ShelveDescriptionMode::KeepOriginal,
+            )
+            .unwrap();
+
+        let described2 = tc.p4.describe(&[cl]).run().unwrap().single().unwrap();
+        assert_eq!(described2.description.trim(), "Original description");
 
         cleanup_shelved_change(&tc, cl);
     }

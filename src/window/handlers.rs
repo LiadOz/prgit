@@ -14,7 +14,7 @@ use p4rs::P4;
 use serde::{Deserialize, Serialize};
 
 use crate::cabinet::Database;
-use crate::shelf::Shelver;
+use crate::shelf::{Shelver, ShelveDescriptionMode};
 
 use super::observability::{EventEmitter, ObservabilityEvent};
 use super::{AppState, RepoEntry};
@@ -618,6 +618,7 @@ async fn shelve_branches(
     let db_path = state.db_path.clone();
     let client_id = repo_entry.client_id;
     let async_shelve = repo_entry.config.shelve_async();
+    let description_mode = repo_entry.config.shelve_description_mode();
     let username = auth_user.username;
     let user_p4 = auth_user.p4;
     let group = repo_entry.config.group.clone();
@@ -658,6 +659,7 @@ async fn shelve_branches(
                 &active,
                 &emitter,
                 async_shelve,
+                description_mode,
             );
         }));
 
@@ -678,6 +680,7 @@ async fn shelve_branches(
                 &emitter,
                 &repo_name,
                 async_shelve,
+                description_mode,
             )
         })
         .await;
@@ -706,6 +709,7 @@ fn do_shelve(
     emitter: &EventEmitter,
     repo: &str,
     is_async: bool,
+    description_mode: ShelveDescriptionMode,
 ) -> HandlerShelveResult {
     let mut messages = Vec::new();
     let mut errors = Vec::new();
@@ -750,7 +754,7 @@ fn do_shelve(
 
     for branch in branches {
         let start = Instant::now();
-        match shelver.shelve(branch, user_p4, shelver_user) {
+        match shelver.shelve(branch, user_p4, shelver_user, description_mode) {
             Ok(result) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 log::info!(
@@ -828,6 +832,7 @@ fn do_shelve_background(
     active: &super::ActiveShelves,
     emitter: &EventEmitter,
     is_async: bool,
+    description_mode: ShelveDescriptionMode,
 ) {
     let repo = format!("{group}/{name}");
     let db = match Database::open(db_path) {
@@ -909,7 +914,7 @@ fn do_shelve_background(
         let key = format!("{group}/{name}/{branch}");
         active.set_shelving(&key);
         let start = Instant::now();
-        match shelver.shelve(branch, user_p4, shelver_user) {
+        match shelver.shelve(branch, user_p4, shelver_user, description_mode) {
             Ok(result) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 log::info!(

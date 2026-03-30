@@ -139,6 +139,8 @@ impl ObservabilityConfig {
 pub struct ShelveSettings {
     #[serde(default, rename = "async")]
     pub r#async: bool,
+    #[serde(default)]
+    pub description: crate::shelf::ShelveDescriptionMode,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -157,6 +159,13 @@ pub struct RepoConfig {
 impl RepoConfig {
     pub fn shelve_async(&self) -> bool {
         self.shelve.as_ref().is_some_and(|s| s.r#async)
+    }
+
+    pub fn shelve_description_mode(&self) -> crate::shelf::ShelveDescriptionMode {
+        self.shelve
+            .as_ref()
+            .map(|s| s.description)
+            .unwrap_or_default()
     }
 
     fn url_path(&self) -> String {
@@ -412,6 +421,96 @@ repos:
 "#;
         let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(!config.repos[0].shelve_async());
+    }
+
+    #[test]
+    fn test_config_shelve_description_defaults_to_update() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve:
+      async: true
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.repos[0].shelve_description_mode(),
+            crate::shelf::ShelveDescriptionMode::Update
+        );
+    }
+
+    #[test]
+    fn test_config_shelve_description_keep_original() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve:
+      description: keep_original
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.repos[0].shelve_description_mode(),
+            crate::shelf::ShelveDescriptionMode::KeepOriginal
+        );
+    }
+
+    #[test]
+    fn test_config_shelve_description_update_explicit() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+    shelve:
+      description: update
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.repos[0].shelve_description_mode(),
+            crate::shelf::ShelveDescriptionMode::Update
+        );
+    }
+
+    #[test]
+    fn test_config_no_shelve_section_defaults_description_to_update() {
+        let yaml = r#"
+listen: "127.0.0.1:8080"
+data_dir: "/tmp/test"
+repos:
+  - group: depot
+    name: main
+    p4port: "localhost:1666"
+    p4client: test
+    synced_branch: master
+    mirror_interval_secs: 30
+    max_changes: 100
+"#;
+        let config: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.repos[0].shelve_description_mode(),
+            crate::shelf::ShelveDescriptionMode::Update
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::cabinet::PrgitClient;
 
 use super::client_pool::{get_shelve_client, ShelveClientError};
-use super::shelve_client::{FileAction, FileChange, ShelveClient};
+use super::shelve_client::{FileAction, FileChange, ShelveClient, ShelveDescriptionMode};
 
 pub struct ShelveResult {
     pub changelist: usize,
@@ -33,6 +33,7 @@ impl<'a> Shelver<'a> {
         branch: &str,
         user_p4: &P4,
         shelver_user: &str,
+        description_mode: ShelveDescriptionMode,
     ) -> Result<ShelveResult, ShelverError> {
         let branch_ref = self.repo.find_branch(branch, git2::BranchType::Local)?;
         let target_commit = branch_ref.get().peel_to_commit()?;
@@ -66,6 +67,7 @@ impl<'a> Shelver<'a> {
             &changes,
             &description,
             existing_shelve,
+            description_mode,
         )?;
 
         self.prgit_client
@@ -162,6 +164,7 @@ impl<'a> Shelver<'a> {
         changes: &[ChangedFile],
         description: &str,
         existing_shelve: Option<usize>,
+        description_mode: ShelveDescriptionMode,
     ) -> Result<usize, ShelverError> {
         let file_changes: Vec<FileChange> = changes
             .iter()
@@ -183,6 +186,7 @@ impl<'a> Shelver<'a> {
             &file_changes,
             description,
             existing_shelve,
+            description_mode,
         )?;
 
         Ok(cl)
@@ -413,7 +417,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -465,7 +469,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -509,7 +513,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -544,7 +548,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser");
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser", Default::default());
 
         assert!(matches!(result, Err(ShelverError::NoChanges)));
     }
@@ -573,7 +577,7 @@ mod tests {
         let prgit_client = setup_prgit_client(&env);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser");
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser", Default::default());
 
         assert!(matches!(result, Err(ShelverError::NoBaseCommit)));
     }
@@ -611,7 +615,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let first_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -630,7 +634,7 @@ mod tests {
             .unwrap();
 
         let second_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -687,7 +691,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let shelve_cl = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap()
             .changelist;
 
@@ -767,7 +771,7 @@ mod tests {
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser").unwrap();
+        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser", Default::default()).unwrap();
 
         let described = env.p4_client.p4.describe(&[result.changelist]).shelved().run().unwrap().single().unwrap();
         assert_eq!(described.files.len(), 1);
@@ -824,7 +828,7 @@ mod tests {
 
         let shelver = Shelver::new(&prgit_client).unwrap();
         let result = shelver
-            .shelve("feature", &env.p4_client.p4, "testuser")
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
             .unwrap();
 
         // Verify the shelved file preserves text+k
