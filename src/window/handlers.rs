@@ -197,6 +197,16 @@ pub async fn handle_git_request(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
+    let git_protocol = req
+        .headers()
+        .get("Git-Protocol")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let content_encoding = req
+        .headers()
+        .get("content-encoding")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
     let auth_user = if is_receive_pack {
         match authenticate_push(
@@ -279,6 +289,8 @@ pub async fn handle_git_request(
         &query,
         &content_type,
         &body_bytes,
+        git_protocol.as_deref(),
+        content_encoding.as_deref(),
     ) {
         Ok(output) => output,
         Err(e) => {
@@ -489,18 +501,27 @@ fn spawn_cgi(
     query: &str,
     content_type: &str,
     body: &[u8],
+    git_protocol: Option<&str>,
+    content_encoding: Option<&str>,
 ) -> std::io::Result<Vec<u8>> {
-    let mut child = std::process::Command::new(backend)
-        .env("GIT_PROJECT_ROOT", repo_parent)
+    let mut cmd = std::process::Command::new(backend);
+    cmd.env("GIT_PROJECT_ROOT", repo_parent)
         .env("GIT_HTTP_EXPORT_ALL", "1")
         .env("PATH_INFO", path_info)
         .env("REQUEST_METHOD", method)
         .env("QUERY_STRING", query)
         .env("CONTENT_TYPE", content_type)
+        .env("CONTENT_LENGTH", body.len().to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+    if let Some(proto) = git_protocol {
+        cmd.env("HTTP_GIT_PROTOCOL", proto);
+    }
+    if let Some(encoding) = content_encoding {
+        cmd.env("HTTP_CONTENT_ENCODING", encoding);
+    }
+    let mut child = cmd.spawn()?;
 
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(body);
