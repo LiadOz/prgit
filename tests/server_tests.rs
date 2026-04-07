@@ -652,7 +652,7 @@ async fn test_shelve_status_falls_back_to_database() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/repos/depot/main/shelve/status/feature%2Fold-shelve")
+                .uri("/api/v1/repos/depot/main/shelve/status?branch=feature/old-shelve")
                 .body(Body::empty())
                 .expect("request"),
         )

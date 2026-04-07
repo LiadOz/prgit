@@ -146,7 +146,7 @@ On push, prgit diffs your branch against the synced branch, finds the correspond
 If the server is configured with `shelve.async: true`, pushes return immediately. Poll for the result:
 
 ```
-GET /api/v1/repos/{group}/{name}/shelve/status/{branch}
+GET /api/v1/repos/{group}/{name}/shelve/status?branch={branch}
 ```
 
 Response:
@@ -165,7 +165,7 @@ Possible states: `queued`, `shelving`, `done`, `failed`.
 | `/api/v1/events` | GET | No | Query stored events (params: `event_type`, `since`, `until`, `repo`, `user`, `limit`) |
 | `/api/v1/events/counts` | GET | No | Event counts grouped by type (same filters as above) |
 | `/api/v1/events/users` | GET | No | Active users with push counts and branch counts (params: `since`, `repo`) |
-| `/api/v1/repos/{group}/{name}/shelve/status/{branch}` | GET | No | Shelve status for a branch |
+| `/api/v1/repos/{group}/{name}/shelve/status?branch={branch}` | GET | No | Shelve status for a branch |
 | `/api/v1/repos/{group}/{name}/shelve/cl-alias` | POST | Yes | Register an alternate CL for mirror branch resolution |
 | `/{group}/{name}.git/*` | GET | No | Git clone/fetch (anonymous) |
 | `/{group}/{name}.git/*` | POST | Yes | Git push (requires P4 credentials) |

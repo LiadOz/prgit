@@ -324,7 +324,7 @@ pub fn build_app(config: &ServerConfig) -> Result<(Router, observability::EventE
         .route("/api/v1/events/counts", get(handlers::query_event_counts))
         .route("/api/v1/events/users", get(handlers::query_active_users))
         .route(
-            "/api/v1/repos/{group}/{name}/shelve/status/{branch}",
+            "/api/v1/repos/{group}/{name}/shelve/status",
             get(handlers::shelve_status),
         )
         .route(
@@ -547,6 +547,26 @@ repos:
         match tracker.get("depot/main/bugfix") {
             Some(ShelveState::Failed { error }) => assert_eq!(error, "P4 error"),
             other => panic!("Expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_active_shelves_with_slashed_branch() {
+        let tracker = ActiveShelves::default();
+
+        // Branch names with slashes use the same tracker key format as the handler:
+        // "{group}/{name}/{branch}" where branch itself contains slashes
+        let key = format!("{}/{}/{}", "depot", "main", "loz/test-buildRegressionConfig");
+        tracker.set_queued(&key);
+        assert!(matches!(tracker.get(&key), Some(ShelveState::Queued)));
+
+        tracker.set_done(&key, 99999, "shelve-client".to_string());
+        match tracker.get(&key) {
+            Some(ShelveState::Done { changelist, client }) => {
+                assert_eq!(changelist, 99999);
+                assert_eq!(client, "shelve-client");
+            }
+            other => panic!("Expected Done, got {other:?}"),
         }
     }
 }

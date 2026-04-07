@@ -23,10 +23,17 @@ pub async fn health() -> StatusCode {
     StatusCode::OK
 }
 
+#[derive(Deserialize)]
+pub struct ShelveStatusQuery {
+    branch: String,
+}
+
 pub async fn shelve_status(
     State(state): State<Arc<AppState>>,
-    Path((group, name, branch)): Path<(String, String, String)>,
+    Path((group, name)): Path<(String, String)>,
+    Query(query): Query<ShelveStatusQuery>,
 ) -> Response {
+    let branch = query.branch;
     let repo_key = format!("{group}/{name}");
     let repo_entry = match state.repos.get(&repo_key) {
         Some(entry) => entry,
