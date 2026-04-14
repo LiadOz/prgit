@@ -1636,6 +1636,7 @@ dependencies = [
  "libc",
  "log",
  "p4rs",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

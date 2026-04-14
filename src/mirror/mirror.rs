@@ -123,7 +123,6 @@ impl<M: MirrorData> Mirror<M> {
                 &[file_spec.as_str()],
                 format!("{}/...", temp_dir.path().display()).as_str(),
             )
-            .keyword_suppression()
             .run()?
             .results;
 

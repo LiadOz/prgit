@@ -1,6 +1,8 @@
 use p4rs::{ChangeSpec, ChangeType, ChangelistBuilder, P4Command, P4Error, P4};
+use regex::Regex;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +37,24 @@ fn apply_git_type_to_depot(depot_type: &p4rs::FileType, git_type: &p4rs::FileTyp
     let mut result = depot_type.clone();
     result.executable = git_type.executable;
     result
+}
+
+/// Regex matching expanded P4 keywords like `$Id: //depot/file#3 $`.
+/// Order matters: `DateTime` before `Date`, `Revision` before `Rev`.
+static KEYWORD_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\$(Id|Header|DateTime|Date|Change|File|Revision|Rev|Author): [^\$\n]*\$")
+        .expect("invalid keyword regex")
+});
+
+/// Collapse expanded P4 keywords back to their unexpanded form (`$Id$`, etc.)
+/// so that P4 handles all keyword expansion/unexpansion internally.
+fn unexpand_keywords_in_file(path: &Path) -> std::io::Result<()> {
+    let content = std::fs::read_to_string(path)?;
+    let replaced = KEYWORD_RE.replace_all(&content, "$$${1}$$");
+    if replaced != content {
+        std::fs::write(path, replaced.as_bytes())?;
+    }
+    Ok(())
 }
 
 pub struct ShelveClient {
@@ -157,10 +177,10 @@ impl ShelveClient {
                         .next()
                         .map(|f| f.file_type);
 
-                    if let Some(depot_type) = depot_type {
+                    if let Some(ref depot_type) = depot_type {
                         // Apply only the bits git can represent onto the depot type
-                        let effective_type = apply_git_type_to_depot(&depot_type, &git_type);
-                        if effective_type != depot_type {
+                        let effective_type = apply_git_type_to_depot(depot_type, &git_type);
+                        if effective_type != *depot_type {
                             self.p4
                                 .reopen(&[full_path_str.as_ref()])
                                 .changelist(changelist)
@@ -169,6 +189,12 @@ impl ShelveClient {
                         }
                     }
                     Self::copy_file(&src, &dest)?;
+                    // For ktext files, unexpand keywords so P4 handles
+                    // expansion internally — prevents db.storagesh digest
+                    // mismatches on re-shelve.
+                    if depot_type.as_ref().is_some_and(|t| t.keyword_expansion) {
+                        unexpand_keywords_in_file(&dest)?;
+                    }
                 }
                 FileAction::Delete => {
                     builder.delete(change.path)?;
@@ -1087,6 +1113,113 @@ mod tests {
         assert_eq!(described2.description.trim(), "Original description");
 
         cleanup_shelved_change(&tc, cl);
+    }
+
+    /// Simulates the real-world flow: git stores expanded keywords (from the
+    /// mirror's `p4 print`), the shelver writes that content to the workspace,
+    /// and `p4 shelve` must succeed — including on re-shelve where
+    /// db.storagesh digest reconciliation previously failed.
+    #[test]
+    fn test_reshelve_ktext_with_expanded_keywords_succeeds() {
+        let tc = SERVER.test_client();
+
+        // Create a text+k file in P4
+        let base = tc
+            .changelist("Add ktext file")
+            .add_file_with_opts(
+                "rbs_sql.py",
+                b"$Id$\noriginal content",
+                Some(p4rs::FileType::text().keyword_expansion()),
+            )
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        // First shelve — content has expanded keywords (as stored in git)
+        let tmp1 = TempDir::new().unwrap();
+        fs::write(
+            tmp1.path().join("rbs_sql.py"),
+            b"$Id: //depot/rbs_sql.py#1 $\nmodified v1",
+        )
+        .unwrap();
+        let client = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl = client
+            .run(
+                base,
+                tmp1.path(),
+                &[FileChange {
+                    path: "rbs_sql.py",
+                    action: FileAction::Edit,
+                }],
+                "First shelve",
+                None,
+                Default::default(),
+            )
+            .expect("First shelve should succeed");
+
+        // Re-shelve — this is where the db.storagesh digest mismatch occurred
+        let tmp2 = TempDir::new().unwrap();
+        fs::write(
+            tmp2.path().join("rbs_sql.py"),
+            b"$Id: //depot/rbs_sql.py#1 $\nmodified v2",
+        )
+        .unwrap();
+        let client2 = ShelveClient::new(
+            tc.p4.clone(),
+            &tc.client_name,
+            tc.client_root().to_path_buf(),
+        )
+        .unwrap();
+        let cl2 = client2
+            .run(
+                base,
+                tmp2.path(),
+                &[FileChange {
+                    path: "rbs_sql.py",
+                    action: FileAction::Edit,
+                }],
+                "Re-shelve",
+                Some(cl),
+                Default::default(),
+            )
+            .expect("Re-shelve should succeed");
+        assert_eq!(cl, cl2);
+
+        cleanup_shelved_change(&tc, cl);
+    }
+
+    #[test]
+    fn test_unexpand_keywords_in_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.py");
+        fs::write(
+            &path,
+            "# Header\n$Id: //depot/test.py#42 $\n$Author: jdoe $\n$Date: 2026/01/01 $\ncode\n",
+        )
+        .unwrap();
+
+        super::unexpand_keywords_in_file(&path).unwrap();
+
+        let result = fs::read_to_string(&path).unwrap();
+        assert_eq!(result, "# Header\n$Id$\n$Author$\n$Date$\ncode\n");
+    }
+
+    #[test]
+    fn test_unexpand_keywords_no_op_when_already_unexpanded() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.py");
+        let content = "$Id$\n$Author$\nno keywords here\n";
+        fs::write(&path, content).unwrap();
+
+        super::unexpand_keywords_in_file(&path).unwrap();
+
+        let result = fs::read_to_string(&path).unwrap();
+        assert_eq!(result, content);
     }
 
 }
