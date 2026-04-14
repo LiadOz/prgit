@@ -63,6 +63,8 @@ pub struct PrintCommand<'p, 'f, T> {
     command_specific: T,
     #[setters(bool)]
     all_revisions: bool,
+    #[setters(bool)]
+    keyword_suppression: bool,
     max_files: Option<usize>,
     line_ending: Option<LineEnding>,
 }
@@ -74,6 +76,7 @@ impl<'p, 'f, T> PrintCommand<'p, 'f, T> {
             files,
             command_specific,
             all_revisions: false,
+            keyword_suppression: false,
             max_files: None,
             line_ending: None,
         }
@@ -82,6 +85,7 @@ impl<'p, 'f, T> PrintCommand<'p, 'f, T> {
     fn build_base_args(&self, process: &mut crate::commands::process::P4Process) {
         process
             .flag(self.all_revisions, "-a")
+            .flag(self.keyword_suppression, "-k")
             .opt("-m", &self.max_files)
             .opt("-L", &self.line_ending);
     }

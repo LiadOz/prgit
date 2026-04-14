@@ -1580,3 +1580,99 @@ fn test_login_status_no_ticket() {
     let result = p4.login().status();
     assert!(result.is_err());
 }
+
+#[test]
+fn test_print_keyword_suppression_content() {
+    let test_client = SERVER.test_client();
+    let content = "# Header\n$Id$\n$Author$\nBody text\n";
+
+    let submitted = test_client
+        .changelist("Add ktext file")
+        .add_file_with_opts(
+            "ktext_file.py",
+            content.as_bytes(),
+            Some(p4rs::FileType::text().keyword_expansion()),
+        )
+        .submit()
+        .unwrap()
+        .submitted_change;
+
+    // Without -k: keywords should be expanded by the server
+    let expanded = test_client
+        .p4
+        .print()
+        .content(&[&format!("//...@={}", submitted)])
+        .run()
+        .expect("Failed to print without -k");
+    assert_eq!(expanded.len(), 1);
+    assert!(
+        expanded[0].data.contains("$Id: "),
+        "Expected expanded $Id keyword, got: {}",
+        expanded[0].data
+    );
+
+    // With -k: keywords should remain unexpanded
+    let unexpanded = test_client
+        .p4
+        .print()
+        .content(&[&format!("//...@={}", submitted)])
+        .keyword_suppression()
+        .run()
+        .expect("Failed to print with -k");
+    assert_eq!(unexpanded.len(), 1);
+    assert!(
+        unexpanded[0].data.contains("$Id$"),
+        "Expected unexpanded $Id keyword with -k, got: {}",
+        unexpanded[0].data
+    );
+    assert_eq!(unexpanded[0].data, content);
+}
+
+#[test]
+fn test_print_keyword_suppression_to_file() {
+    let test_client = SERVER.test_client();
+    let content = "$Header$\nsome code\n$Id$\n";
+
+    let submitted = test_client
+        .changelist("Add ktext file for to_file test")
+        .add_file_with_opts(
+            "ktext_to_file.py",
+            content.as_bytes(),
+            Some(p4rs::FileType::text().keyword_expansion()),
+        )
+        .submit()
+        .unwrap()
+        .submitted_change;
+
+    let depot_file = format!(
+        "//depot/{}/ktext_to_file.py@={}",
+        test_client.client_name, submitted
+    );
+
+    // Without -k
+    let output_expanded = test_client.client_root().join("expanded_out.py");
+    test_client
+        .p4
+        .print()
+        .to_file(&[&depot_file], output_expanded.to_str().unwrap())
+        .run()
+        .expect("Failed to print to file without -k");
+    let expanded_content = fs::read_to_string(&output_expanded).expect("read expanded");
+    assert!(
+        expanded_content.contains("$Header: "),
+        "Expected expanded $Header, got: {}",
+        expanded_content
+    );
+
+    // With -k
+    let output_unexpanded = test_client.client_root().join("unexpanded_out.py");
+    test_client
+        .p4
+        .print()
+        .to_file(&[&depot_file], output_unexpanded.to_str().unwrap())
+        .keyword_suppression()
+        .run()
+        .expect("Failed to print to file with -k");
+    let unexpanded_content = fs::read_to_string(&output_unexpanded).expect("read unexpanded");
+    assert_eq!(unexpanded_content, content);
+}
