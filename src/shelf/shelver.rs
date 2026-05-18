@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use git2::{Delta, DiffOptions, Repository};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use p4rs::P4;
 use thiserror::Error;
 
@@ -8,6 +9,8 @@ use crate::cabinet::PrgitClient;
 
 use super::client_pool::{get_shelve_client, ShelveClientError};
 use super::shelve_client::{FileAction, FileChange, ShelveClient, ShelveDescriptionMode};
+
+const PRGITIGNORE_PATH: &str = ".prgitignore";
 
 pub struct ShelveResult {
     pub changelist: usize,
@@ -153,6 +156,11 @@ impl<'a> Shelver<'a> {
             None,
         )?;
 
+        let ignore = load_prgitignore(&self.repo, target)?;
+        if let Some(gi) = ignore.as_ref() {
+            changes.retain(|c| !is_ignored_add(gi, c));
+        }
+
         Ok(changes)
     }
 
@@ -228,6 +236,46 @@ struct ChangedFile {
     action: FileAction,
 }
 
+fn load_prgitignore(
+    repo: &Repository,
+    target: &git2::Commit,
+) -> Result<Option<Gitignore>, ShelverError> {
+    let tree = target.tree()?;
+    let entry = match tree.get_path(Path::new(PRGITIGNORE_PATH)) {
+        Ok(e) => e,
+        Err(_) => return Ok(None),
+    };
+    let blob = repo.find_blob(entry.id())?;
+    let content = std::str::from_utf8(blob.content())
+        .map_err(|e| ShelverError::InvalidPrgitignore(e.to_string()))?;
+    let mut builder = GitignoreBuilder::new("");
+    for (lineno, line) in content.lines().enumerate() {
+        builder
+            .add_line(None, line)
+            .map_err(|e| ShelverError::InvalidPrgitignore(format!("line {}: {}", lineno + 1, e)))?;
+    }
+    let gi = builder
+        .build()
+        .map_err(|e| ShelverError::InvalidPrgitignore(e.to_string()))?;
+    Ok(Some(gi))
+}
+
+fn is_ignored_add(gi: &Gitignore, change: &ChangedFile) -> bool {
+    if change.action != FileAction::Add {
+        return false;
+    }
+    if change.path == PRGITIGNORE_PATH {
+        return false;
+    }
+    let matched = gi.matched_path_or_any_parents(Path::new(&change.path), false);
+    if matched.is_ignore() {
+        log::info!("prgitignore: skipping new file {}", change.path);
+        true
+    } else {
+        false
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ShelverError {
     #[error("No shelve config found")]
@@ -236,6 +284,8 @@ pub enum ShelverError {
     NoBaseCommit,
     #[error("No changes to shelve")]
     NoChanges,
+    #[error("Invalid .prgitignore: {0}")]
+    InvalidPrgitignore(String),
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
     #[error("P4 error: {0}")]
@@ -343,7 +393,11 @@ mod tests {
     ) -> git2::Oid {
         let specs: Vec<FileSpec> = files
             .iter()
-            .map(|(p, c)| FileSpec { path: p, content: c, executable: false })
+            .map(|(p, c)| FileSpec {
+                path: p,
+                content: c,
+                executable: false,
+            })
             .collect();
         create_feature_commit_with_modes(repo, base_oid, &specs, message)
     }
@@ -960,27 +1014,47 @@ mod tests {
             index.write().unwrap();
             let tree_id = index.write_tree().unwrap();
             let tree = env.git_repo.find_tree(tree_id).unwrap();
-            env.git_repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[]).unwrap()
+            env.git_repo
+                .commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+                .unwrap()
         };
 
         // Create feature branch: edit content, keep executable
         let feature_oid = create_feature_commit_with_modes(
             &env.git_repo,
             base_oid,
-            &[FileSpec { path: "run.py", content: b"#!/usr/bin/env python\nprint('v2')", executable: true }],
+            &[FileSpec {
+                path: "run.py",
+                content: b"#!/usr/bin/env python\nprint('v2')",
+                executable: true,
+            }],
             "Edit script",
         );
         env.git_repo
-            .branch("feature", &env.git_repo.find_commit(feature_oid).unwrap(), false)
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
             .unwrap();
 
         let prgit_client = setup_prgit_client(&env);
         prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
 
         let shelver = Shelver::new(&prgit_client).unwrap();
-        let result = shelver.shelve("feature", &env.p4_client.p4, "testuser", Default::default()).unwrap();
+        let result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
 
-        let described = env.p4_client.p4.describe(&[result.changelist]).shelved().run().unwrap().single().unwrap();
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
         assert_eq!(described.files.len(), 1);
         let shelved_type = &described.files[0].file_type;
         assert!(
@@ -1058,5 +1132,130 @@ mod tests {
             !shelved_type.compressed,
             "Should NOT gain compressed (+C), got: {shelved_type:?}"
         );
+    }
+
+    #[test]
+    fn test_prgitignore_skips_matching_adds() {
+        let env = setup_test_env();
+
+        let base_change = env
+            .p4_client
+            .changelist("Initial")
+            .add_file("existing.txt", b"existing content")
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("existing.txt", b"existing content")],
+            "Initial commit",
+        );
+
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[
+                (".prgitignore", b"*.log\nlocal/\n"),
+                ("keep.txt", b"keep me"),
+                ("debug.log", b"ignore me"),
+                ("local/notes.md", b"also ignored"),
+            ],
+            "Add files with .prgitignore",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        let mut paths: Vec<String> = described
+            .files
+            .iter()
+            .map(|f| f.depot_file.clone())
+            .collect();
+        paths.sort();
+        let names: Vec<&str> = paths
+            .iter()
+            .map(|p| p.rsplit('/').next().unwrap())
+            .collect();
+        assert_eq!(names, vec![".prgitignore", "keep.txt"]);
+    }
+
+    #[test]
+    fn test_prgitignore_does_not_filter_edits() {
+        let env = setup_test_env();
+
+        let base_change = env
+            .p4_client
+            .changelist("Initial")
+            .add_file("tracked.log", b"original")
+            .submit()
+            .unwrap()
+            .submitted_change;
+
+        let base_oid = create_git_commit(
+            &env.git_repo,
+            &[("tracked.log", b"original")],
+            "Initial commit",
+        );
+
+        let feature_oid = create_feature_commit(
+            &env.git_repo,
+            base_oid,
+            &[(".prgitignore", b"*.log\n"), ("tracked.log", b"modified")],
+            "Edit tracked .log file",
+        );
+        env.git_repo
+            .branch(
+                "feature",
+                &env.git_repo.find_commit(feature_oid).unwrap(),
+                false,
+            )
+            .unwrap();
+
+        let prgit_client = setup_prgit_client(&env);
+        prgit_client.map_commit_to_change(&base_oid.to_string(), base_change);
+
+        let shelver = Shelver::new(&prgit_client).unwrap();
+        let result = shelver
+            .shelve("feature", &env.p4_client.p4, "testuser", Default::default())
+            .unwrap();
+
+        let described = env
+            .p4_client
+            .p4
+            .describe(&[result.changelist])
+            .shelved()
+            .run()
+            .unwrap()
+            .single()
+            .unwrap();
+        let mut names: Vec<&str> = described
+            .files
+            .iter()
+            .map(|f| f.depot_file.rsplit('/').next().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec![".prgitignore", "tracked.log"]);
     }
 }
