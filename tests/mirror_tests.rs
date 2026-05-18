@@ -1,6 +1,8 @@
 use git2::{FileMode, Repository};
 use p4rs::testkit::{TestClient, SERVER};
-use p4rs::{ChangeSpec, ChangeType, FileAction, FileType, P4Command, SubmitResult};
+use p4rs::{
+    ChangeSpec, ChangeType, ClientMapping, FileAction, FileType, P4Command, SubmitResult,
+};
 use prgit::mirror::{HashMapMirrorData, IntegrateStrategy, Mirror, MirrorData};
 use std::collections::HashMap;
 use std::fs;
@@ -336,6 +338,49 @@ fn test_dotgit_file_skipped_other_files_mirrored() {
     );
 }
 
+#[test]
+fn test_multi_view_mapping() {
+    // Client view maps two unrelated depot subtrees into different
+    // client-side subdirs. The mirror must resolve each file to the
+    // correct path in the git repo without erroring on either branch.
+    let env = MirrorTestEnv::new_with_view(|name| {
+        vec![
+            ClientMapping::new(
+                format!("//depot/{name}/main/..."),
+                format!("//{name}/main/..."),
+            ),
+            ClientMapping::new(
+                format!("//depot/{name}/user/loz/..."),
+                format!("//{name}/user/loz/..."),
+            ),
+        ]
+    });
+
+    env.p4_client
+        .changelist("Files in both mappings")
+        .add_file("main/code.rs", b"fn main() {}")
+        .add_file("user/loz/.gitlab/test", b"hello")
+        .submit()
+        .expect("submit failed");
+
+    env.mirror()
+        .run()
+        .expect("Mirror should resolve all view mappings");
+    assert_eq!(env.git_commit_count(), 1);
+
+    let git_files = env.get_git_files();
+    assert!(
+        git_files.contains_key("main/code.rs"),
+        "main/code.rs missing from git; have: {:?}",
+        git_files.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        git_files.contains_key("user/loz/.gitlab/test"),
+        "user/loz/.gitlab/test missing from git; have: {:?}",
+        git_files.keys().collect::<Vec<_>>()
+    );
+}
+
 struct MirrorTestEnv {
     p4_client: TestClient,
     git_dir: TempDir,
@@ -344,6 +389,13 @@ struct MirrorTestEnv {
 impl MirrorTestEnv {
     fn new() -> Self {
         let p4_client = SERVER.test_client();
+        let git_dir = TempDir::new().expect("Failed to create git temp dir");
+        Repository::init_bare(git_dir.path()).expect("Failed to init git repo");
+        Self { p4_client, git_dir }
+    }
+
+    fn new_with_view(build_view: impl FnOnce(&str) -> Vec<ClientMapping>) -> Self {
+        let p4_client = TestClient::new_with_view(SERVER.p4(), build_view);
         let git_dir = TempDir::new().expect("Failed to create git temp dir");
         Repository::init_bare(git_dir.path()).expect("Failed to init git repo");
         Self { p4_client, git_dir }

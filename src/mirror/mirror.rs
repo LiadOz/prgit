@@ -1,11 +1,46 @@
 use std::time::Instant;
 
 use git2::{FileMode, Repository};
-use p4rs::{BaseFileType, ChangeData, FileAction, P4Command, P4Error, P4};
+use p4rs::{BaseFileType, ChangeData, FileAction, P4Command, P4Error, WhereResult, P4};
 
 use super::commit_builder::{CommitBuilder, CommitMetadata};
 use super::error::MirrorError;
 use super::mirror_data::{IntegrateStrategy, MirrorData};
+
+/// A single line of a P4 client view, normalized: prefixes have the
+/// trailing `...` stripped so a depot-side path can be matched and
+/// rewritten to its client-relative location.
+struct ViewMapping {
+    depot_prefix: String,
+    client_subdir: String,
+}
+
+fn parse_view_mappings(where_results: &[WhereResult], client_name: &str) -> Vec<ViewMapping> {
+    let client_root = format!("//{}/", client_name);
+    where_results
+        .iter()
+        .filter_map(|w| {
+            if w.depot_file.starts_with('-') {
+                return None;
+            }
+            let depot_prefix = w.depot_file.strip_suffix("...")?.to_string();
+            let client_path = w.client_file.strip_suffix("...")?;
+            let client_subdir = client_path.strip_prefix(&client_root)?.to_string();
+            Some(ViewMapping {
+                depot_prefix,
+                client_subdir,
+            })
+        })
+        .collect()
+}
+
+fn resolve_path_in_repo(mappings: &[ViewMapping], depot_file: &str) -> Option<String> {
+    mappings
+        .iter()
+        .filter(|m| depot_file.starts_with(&m.depot_prefix))
+        .max_by_key(|m| m.depot_prefix.len())
+        .map(|m| format!("{}{}", m.client_subdir, &depot_file[m.depot_prefix.len()..]))
+}
 
 /// Info about a single mirrored change, returned to the caller for observability.
 pub struct MirrorChangeInfo {
@@ -127,17 +162,18 @@ impl<M: MirrorData> Mirror<M> {
             .results;
 
         let where_result = self.p4.where_cmd(&[&client_path]).run()?;
-        let depot_base = where_result
-            .results
-            .first()
-            .and_then(|w| w.depot_file.strip_suffix("..."))
-            .ok_or_else(|| MirrorError::MirrorFailed("Failed to get client base path".to_string()))?
-            .to_string();
+        let view_mappings =
+            parse_view_mappings(&where_result.results, self.mirror_data.p4_client());
+        if view_mappings.is_empty() {
+            return Err(MirrorError::MirrorFailed(
+                "Client view has no usable mappings".to_string(),
+            ));
+        }
 
         Ok(ChangeContext {
             email,
             file_data,
-            depot_base,
+            view_mappings,
             temp_dir,
         })
     }
@@ -176,17 +212,15 @@ impl<M: MirrorData> Mirror<M> {
 
         let mut skipped_files = Vec::new();
         for file in &ctx.file_data {
-            let path_in_repo = file
-                .depot_file
-                .strip_prefix(&ctx.depot_base)
-                .ok_or_else(|| {
+            let path_in_repo =
+                resolve_path_in_repo(&ctx.view_mappings, &file.depot_file).ok_or_else(|| {
                     MirrorError::MirrorFailed(format!(
-                        "Failed to get path in repository for file {}: {}",
-                        file.depot_file, ctx.depot_base
+                        "Failed to get path in repository for file {}: no matching client view mapping",
+                        file.depot_file
                     ))
                 })?;
 
-            if std::path::Path::new(path_in_repo)
+            if std::path::Path::new(&path_in_repo)
                 .components()
                 .any(|c| c.as_os_str() == ".git")
             {
@@ -198,7 +232,7 @@ impl<M: MirrorData> Mirror<M> {
                 continue;
             }
 
-            let path_in_temp = ctx.temp_dir.path().join(path_in_repo);
+            let path_in_temp = ctx.temp_dir.path().join(&path_in_repo);
             let mode = Self::file_mode(&file.file_type);
 
             match file.action {
@@ -207,10 +241,10 @@ impl<M: MirrorData> Mirror<M> {
                 | FileAction::MoveAdd
                 | FileAction::Branch
                 | FileAction::Integrate => {
-                    builder.upsert(path_in_repo, &path_in_temp, mode)?;
+                    builder.upsert(&path_in_repo, &path_in_temp, mode)?;
                 }
                 FileAction::Delete | FileAction::MoveDelete => {
-                    builder.remove(path_in_repo);
+                    builder.remove(&path_in_repo);
                 }
             }
         }
@@ -243,6 +277,6 @@ impl<M: MirrorData> Mirror<M> {
 struct ChangeContext {
     email: String,
     file_data: Vec<p4rs::PrintFileInfo>,
-    depot_base: String,
+    view_mappings: Vec<ViewMapping>,
     temp_dir: tempfile::TempDir,
 }

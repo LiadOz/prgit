@@ -28,15 +28,27 @@ pub struct TestClient {
 
 impl TestClient {
     pub fn new(p4: P4) -> Self {
+        Self::new_with_view(p4, |name| {
+            vec![ClientMapping::new(
+                format!("//depot/{name}/..."),
+                format!("//{name}/..."),
+            )]
+        })
+    }
+
+    /// Create a TestClient with a custom client view. `build_view` receives
+    /// the generated client name and must return the view mappings to use.
+    pub fn new_with_view(
+        p4: P4,
+        build_view: impl FnOnce(&str) -> Vec<ClientMapping>,
+    ) -> Self {
         let test_name = format!("test_{}", uuid::Uuid::new_v4());
         let tmp_dir = TempDir::new().expect("Failed to create temp dir");
+        let view = build_view(&test_name);
         let client_spec = ClientSpec::new(
             &test_name,
             tmp_dir.path().to_str().expect("Path is not valid UTF-8"),
-            vec![ClientMapping::new(
-                format!("//depot/{test_name}/..."),
-                format!("//{test_name}/..."),
-            )],
+            view,
         );
         p4.client()
             .set(&client_spec)
